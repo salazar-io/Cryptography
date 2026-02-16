@@ -124,3 +124,12 @@ Puede tener acceso físico o lógico temporal al equipo del usuario.
 - Descifrar documentos sin la clave correspondiente.
 
 ---
+## 5. Suposiciones de confianza  
+En criptografía, ningún sistema es seguro por sí mismo si el entorno en el que opera está corrompido. Las suposiciones de confianza definen qué condiciones externas deben cumplirse para que nuestras garantías de seguridad sean válidas.
+Nuestro sistema asume que:  
+- El o los dispositivos en donde se ejecuta la aplicación no se encuentran comprometidos por ningun malware, asi las contraseñas y llaves del usuario se encuentran seguras.
+- Se tiene un generador de números aleatorios seguro.
+- Solo el dueño de la llave publica puede abrir el archivo.
+- Se asume que el usuario se hace responsable de elegir una contraseña con suficiente entropia y de que no la compartirá.
+- El almacenamiento pueder ser comprometido dando acceso a algun atacante ya sea en el servidor local o en la nube.
+- Se usarán algoritmos criptográficos estandarizados sin errores de implementación o puertas traseras.
