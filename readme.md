@@ -3,7 +3,7 @@
 - Salazar Serrano Edgar   
 
 ## 2. Diagrama de Arquitectura  
-![Arquitectura](./diagrama.png)
+![Arquitectura](./diagram.png)
 ## 3. Requerimientos de Seguridad  
 - Confidencialidad: Si un atacante obtiene acceso al contenedor de archivos, ya sea en almacenamiento local o remoto, no debe ser capaz de extaer ninguna informacion del contenido de los archivos sin tener una de las llaves privadas vinculadas al contenedor.  
 - Integridad de los archivos: Si se realiza alguna modificación de un arhivo del contenedor, debe ser detectada por el sistema. En caso de alteración se debe cancelar el proceso para evitar que se procesen datos corruptos.  
