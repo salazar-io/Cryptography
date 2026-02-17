@@ -134,6 +134,8 @@ Nuestro sistema asume que:
 - El almacenamiento pueder ser comprometido dando acceso a algun atacante ya sea en el servidor local o en la nube.
 - Se usarán algoritmos criptográficos estandarizados sin errores de implementación o puertas traseras.
 
+---
+
 ## 6. Análisis de la superficie de ataque. 
 Este análisis es un paso crítico para identificar todas las interfaces donde un adversario podría intentar subvertir los controles criptográgicos del sistema. En una herramienta de CLI como nuestra Secure Digital Document Vault, la seguridad no depende solo de la robustez de los algoritmos (como AES o EdDSA), sino de cómo el software maneja la entrada de datos externos y la interacción con el sistema operativo. 
 
