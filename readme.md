@@ -156,7 +156,7 @@ A continuación, se catalogan los puntos de entrada, los riesgos asociados y las
 
 ---
 
-## 7. Design Constraints Derived from Requirements (Restricciones de Diseño)
+## 7. Restricciones de Diseño Derivadas de los Requisitos
 
 Para asegurar un diseño intencional, cada requerimiento se traduce en una decisión técnica obligatoria.
 
