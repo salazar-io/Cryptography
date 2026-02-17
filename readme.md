@@ -133,3 +133,43 @@ Nuestro sistema asume que:
 - Se asume que el usuario se hace responsable de elegir una contraseña con suficiente entropia y de que no la compartirá.
 - El almacenamiento pueder ser comprometido dando acceso a algun atacante ya sea en el servidor local o en la nube.
 - Se usarán algoritmos criptográficos estandarizados sin errores de implementación o puertas traseras.
+
+## 6. Análisis de la superficie de ataque. 
+Este análisis es un paso crítico para identificar todas las interfaces donde un adversario podría intentar subvertir los controles criptográgicos del sistema. En una herramienta de CLI como nuestra Secure Digital Document Vault, la seguridad no depende solo de la robustez de los algoritmos (como AES o EdDSA), sino de cómo el software maneja la entrada de datos externos y la interacción con el sistema operativo. 
+
+A continuación, se catalogan los puntos de entrada, los riesgos asociados y las propiedades de seguridad que se verían comprometidas en caso de un fallo en la implementación. 
+
+
+| Punto de Entrada | ¿Qué podría salir mal? | Propiedad en Riesgo |
+| :--- | :--- | :--- |
+| **Entrada de archivos** | Procesamiento de archivos malformados o excesivamente grandes para causar un DoS. | **Disponibilidad** |
+| **Análisis de metadatos** | Inyección de información falsa o manipulación de cabeceras para engañar al sistema. | **Integridad / Autenticidad** |
+| **Importación/Exportación de llaves** | Almacenamiento de llaves privadas en texto plano o con cifrado débil en el disco. | **Confidencialidad** |
+| **Entrada de contraseña** | Ataques de fuerza bruta o exposición de la contraseña en el historial de la terminal. | **Confidencialidad** |
+| **Flujo de compartición** | Inclusión accidental de llaves públicas no autorizadas, dando acceso a terceros. | **Confidencialidad** |
+| **Verificación de firmas** | Procesar o descifrar datos antes de validar que la firma digital sea legítima. | **Autenticidad / Integridad** |
+| **Argumentos de CLI** | Datos sensibles quedando registrados en el historial de comandos del sistema operativo. | **Confidencialidad** |
+
+
+
+---
+
+## 7. Design Constraints Derived from Requirements (Restricciones de Diseño)
+
+Para asegurar un diseño intencional, cada requerimiento se traduce en una decisión técnica obligatoria.
+
+| Requerimiento | Restricción de Diseño |
+| :--- | :--- |
+| **Integridad garantizada** | Es obligatorio el uso de **AEAD** (como AES-GCM o ChaCha20-Poly1305). |
+| **Autenticidad requerida** | Se deben implementar **Firmas Digitales** (ej. Ed25519) para validar al emisor. |
+| **Protección de llaves privadas** | Las llaves deben cifrarse con un **KDF** robusto (ej. Argon2id) antes de ir a disco. |
+| **Confidencialidad en almacenamiento** | Implementación de **Cifrado Híbrido** para manejar múltiples destinatarios. |
+| **Prevención de reutilización de llaves** | Uso obligatorio de un **CSPRNG** para generar llaves y nonces únicos por archivo. |
+
+
+
+---
+
+### Conclusión de Diseño
+Al mapear estas restricciones, el sistema se vuelve resistente no solo a ataques externos, sino también a errores comunes de implementación. La arquitectura garantiza que, incluso si el almacenamiento es comprometido, la información permanezca cifrada y auténtica.
+
