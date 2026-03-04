@@ -36,8 +36,10 @@ class Vault:
         aad = json.dumps(metadata, sort_keys=True).encode('utf-8')
         
         # Cifrado con AES-GCM, el resultado incluye el tag de autenticación al final del ciphertext
-        ciphertext_with_tag = aesgcm.encrypt(nonce, data, aad)
-        
+        try:
+            ciphertext_with_tag = aesgcm.encrypt(nonce, data, aad)
+        except Exception as e:
+            raise ValueError(f"Error durante el cifrado: {e}")
         # Separar el tag del ciphertext (los últimos 16 bytes son el tag de autenticación)
         ciphertext = ciphertext_with_tag[:-16]
         tag = ciphertext_with_tag[-16:]
@@ -70,4 +72,7 @@ class Vault:
         aad = json.dumps(header, sort_keys=True).encode('utf-8')
         ciphertext_with_tag = ciphertext + tag
         
-        return aesgcm.decrypt(nonce, ciphertext_with_tag, aad)
+        try:
+            return aesgcm.decrypt(nonce, ciphertext_with_tag, aad)
+        except Exception as e:
+            raise ValueError(f"Error durante el descifrado: {e}")
