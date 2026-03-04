@@ -3,7 +3,6 @@
 # Version 1.0
 
 import os
-import base64
 
 class KeyManager:
     @staticmethod
@@ -15,7 +14,7 @@ class KeyManager:
         Returns:
             bytes: La llave generada.
         """
-        key = base64.urlsafe_b64encode(os.urandom(32))  # 256 bits
+        key = os.urandom(32)  # 256 bits
         with open(path, "wb") as f:
             f.write(key)
         return key
@@ -32,6 +31,7 @@ class KeyManager:
         #lectura en modo binario (lee bytes)
         with open(path, "rb") as f:
             key = f.read()
+			
         if len(key) != 32:
             raise ValueError("La llave debe ser de 256 bits (32 bytes).")
         return key
