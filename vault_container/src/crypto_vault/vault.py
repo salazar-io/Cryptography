@@ -48,7 +48,7 @@ class Vault:
             "header": metadata,
             "nonce": nonce,
             "ciphertext": ciphertext,
-            "tag": tag
+            "authentication_tag": tag
         }
 
     @staticmethod
