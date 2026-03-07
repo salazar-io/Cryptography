@@ -67,7 +67,7 @@ class Vault:
         nonce = vault_container["nonce"]
         header = vault_container["header"]
         ciphertext = vault_container["ciphertext"]
-        tag = vault_container["tag"]
+        tag = vault_container["authentication_tag"]
         
         aad = json.dumps(header, sort_keys=True).encode('utf-8')
         ciphertext_with_tag = ciphertext + tag
