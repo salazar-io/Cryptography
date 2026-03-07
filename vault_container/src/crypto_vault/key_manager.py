@@ -14,7 +14,7 @@ class KeyManager:
         Returns:
             bytes: La llave generada.
         """
-        key = os.urandom(32)  # 256 bits
+        key = os.urandom(32)  # 256 bits obtenidos de una fuente de entropía segura
         with open(path, "wb") as f:
             f.write(key)
         return key
