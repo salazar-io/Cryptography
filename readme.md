@@ -4,6 +4,7 @@
 - Salazar Serrano Edgar
 - Mendoza González Mario
 - Victoria Correa Laysha Daniela
+- Rojas Jiménez Claudia Alin
 
 ## 1. Descripción General del Sistema
 
