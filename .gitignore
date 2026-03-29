@@ -225,9 +225,13 @@ test_key.key
 
 # Plaintext / Unencrypted files
 plaintext/
+decrypted_files/
 
 # Encrypted containers / Output directories
 encrypted_vault/
 secure_container/
 secure_vault/
 test_vault_output/
+
+#user keys 
+user_keys/
