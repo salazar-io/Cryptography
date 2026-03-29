@@ -4,65 +4,86 @@ from src.crypto_vault.vault import Vault
 from src.crypto_vault.key_manager import KeyManager
 from src.crypto_vault.container import Container
 
-def decrypt_file(container_path, output_dir, key_path, password):
-    print(f"--- Decodificando Contenedor ---")
-    
-    if not os.path.exists(container_path):
-        print(f"Error: El contenedor '{container_path}' no existe.")
+def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: str, private_key_path: str):
+    """
+    Descifra un archivo de un vault para un destinatario específico.
+    """
+    # 1. Asegurar que el vault existe
+    if not os.path.isfile(vault_path):
+        print(f"[ERROR] El archivo de vault '{vault_path}' no existe.")
         return
 
-    # 1. Cargar la llave con la contraseña
+    print(f"--- Descifrando {os.path.basename(vault_path)} para '{recipient_id}' ---")
+
+    # 2. Solicitar contraseña de la clave privada (si es necesaria)
+    password = None
     try:
-        if not os.path.exists(key_path):
-            print(f"Error: No se encontró el archivo de llave '{key_path}'.")
-            return
-            
-        key = KeyManager.load_key_file(key_path, password)
+        # Un pequeño truco para ver si la clave está cifrada sin cargarla
+        with open(private_key_path, "r") as f:
+            if "ENCRYPTED" in f.read():
+                password = getpass.getpass(f"Introduce la contraseña para la clave privada de '{recipient_id}': ")
+    except Exception:
+        pass # La clave puede ser binaria, no importa si falla
+
+    # 3. Cargar la clave privada
+    try:
+        private_key = KeyManager.load_ecc_key(private_key_path, password=password)
     except Exception as e:
-        print(f"Error al cargar la llave: {e}")
+        print(f"[ERROR] No se pudo cargar la clave privada: {e}")
         return
 
-    # 2. Cargar el contenedor
+    # 4. Cargar el contenedor y descifrar
     try:
-        vault_container = Container.load(container_path)
+        vault_container = Container.load(vault_path)
         
-        # 3. Descifrar
-        decrypted_data = Vault.decrypt(vault_container, key)
+        # Descifrar los datos
+        decrypted_data = Vault.decrypt(vault_container, recipient_id, private_key)
         
-        # 4. Recuperar nombre original desde los metadatos (header)
-        original_name = vault_container.get("header", {}).get("original_name", "recovered_file")
-        
-        # 5. Guardar el resultado
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            
+        # Recuperar nombre original y guardar
+        original_name = vault_container.get("header", {}).get("original_name", f"decrypted_{os.path.basename(vault_path)}")
+        os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, original_name)
         
         with open(output_path, "wb") as f:
             f.write(decrypted_data)
             
-        print(f"\n[ÉXITO] Archivo descifrado y restaurado en: {output_path}")
+        print(f"\n[ÉXITO] Archivo descifrado y guardado en: {output_path}")
         
     except Exception as e:
-        print(f"\n[ERROR] No se pudo descifrar el archivo: {e}")
-        print("Asegúrate de que la contraseña sea correcta y el archivo no esté corrupto.")
+        print(f"\n[ERROR] Falló el proceso de descifrado: {e}")
+        print("Verifica que eres un destinatario válido y que tu clave privada es correcta.")
+
+def list_vaults(directory="encrypted_vault"):
+    """Lista los archivos .vault en un directorio."""
+    if not os.path.exists(directory):
+        return []
+    return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
 if __name__ == "__main__":
-    # Facilitar al usuario encontrar los contenedores
-    print("Contenedores disponibles en 'encrypted_vault/':")
-    if os.path.exists("encrypted_vault"):
-        dirs = [d for d in os.listdir("encrypted_vault") if os.path.isdir(os.path.join("encrypted_vault", d))]
-        for d in dirs:
-            print(f" - {d}")
-    
-    ruta = input("\nIntroduce el nombre o ruta del contenedor (ej: vault_archivo.txt): ")
+    # 1. Listar y seleccionar vault
+    available_vaults = list_vaults()
+    if not available_vaults:
+        print("No se encontraron archivos .vault en la carpeta 'encrypted_vault'.")
+    else:
+        print("Vaults disponibles:")
+        for i, v_name in enumerate(available_vaults):
+            print(f"  [{i+1}] {v_name}")
+        
+        try:
+            choice = int(input("Elige el número del vault a descifrar: ")) - 1
+            if not 0 <= choice < len(available_vaults):
+                raise ValueError()
+            vault_file_path = os.path.join("encrypted_vault", available_vaults[choice])
+        except (ValueError, IndexError):
+            print("Selección no válida.")
+            exit()
 
-    if not os.path.exists(ruta):
-        opcion_default = os.path.join("encrypted_vault", ruta)
-        if os.path.exists(opcion_default):
-            ruta = opcion_default
-        elif os.path.exists(os.path.join("encrypted_vault", f"vault_{ruta}")):
-            ruta = os.path.join("encrypted_vault", f"vault_{ruta}")
+    # 2. Solicitar información del destinatario
+    user_id = input("Introduce tu ID de destinatario: ")
+    priv_key_path = input(f"Introduce la ruta a tu clave privada (para '{user_id}'): ")
 
-    pwd = getpass.getpass("Introduce la contraseña de la llave: ")
-    decrypt_file(ruta, "plaintext", "vault.key", pwd)
+    if not os.path.exists(priv_key_path):
+        print(f"[ERROR] La clave privada en '{priv_key_path}' no existe.")
+    else:
+        #  Ejecutar descifrado
+        decrypt_file_for_recipient(vault_file_path, "decrypted_files", user_id, priv_key_path)
