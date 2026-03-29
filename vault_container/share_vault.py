@@ -9,6 +9,14 @@ from src.crypto_vault.vault import Vault
 from src.crypto_vault.key_manager import KeyManager
 from src.crypto_vault.container import Container
 
+# --- Códigos de color ANSI ---
+C_RED = '\033[91m'
+C_GREEN = '\033[92m'
+C_YELLOW = '\033[93m'
+C_BLUE = '\033[94m'
+C_MAGENTA = '\033[95m'
+C_END = '\033[0m'
+
 def list_vaults(directory="encrypted_vault"):
     """Lista los archivos .vault en un directorio."""
     if not os.path.exists(directory):
@@ -16,9 +24,7 @@ def list_vaults(directory="encrypted_vault"):
     return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
 def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existing_private_key_path: str, new_recipients_info: list):
-    """
-    Añade nuevos destinatarios a un vault existente.
-    """
+    """Añade nuevos destinatarios a un vault existente."""
     # --- 1. Cargar credenciales del usuario existente ---
     password = None
     try:
@@ -31,7 +37,7 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
     try:
         existing_private_key = KeyManager.load_ecc_key(existing_private_key_path, password=password)
     except Exception as e:
-        print(f"[ERROR] No se pudo cargar tu clave privada: {e}")
+        print(f"{C_RED}[ERROR] No se pudo cargar tu clave privada: {e}{C_END}")
         return
 
     # --- 2. Cargar el vault y descifrar la clave de archivo ---
@@ -50,10 +56,10 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
 
         # Descifrar la clave del archivo
         file_key = Vault._decrypt_ecies(existing_private_key, encrypted_file_key)
-        print("  [OK] Clave de archivo recuperada con éxito.")
+        print(f"  {C_GREEN}[OK]{C_END} Clave de archivo recuperada con éxito.")
 
     except Exception as e:
-        print(f"[ERROR] Falló la autorización: {e}")
+        print(f"{C_RED}[ERROR] Falló la autorización: {e}{C_END}")
         return
 
     # --- 3. Cifrar la clave de archivo para los nuevos destinatarios ---
@@ -64,17 +70,17 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
             
             # Verificar que el destinatario no exista ya
             if any(r['id'] == recipient_id for r in vault_container['recipients']):
-                print(f"  [INFO] El usuario '{recipient_id}' ya es un destinatario. Omitiendo.")
+                print(f"  {C_YELLOW}[INFO] El usuario '{recipient_id}' ya es un destinatario. Omitiendo.{C_END}")
                 continue
 
-            print(f"  Cifrando clave para '{recipient_id}'...")
+            print(f"  Cifrando clave para '{C_BLUE}{recipient_id}{C_END}'...")
             new_encrypted_key = Vault._encrypt_ecies(public_key, file_key)
             
             vault_container['recipients'].append({
                 "id": recipient_id,
                 "encrypted_key": new_encrypted_key
             })
-            print(f"  [OK] Destinatario '{recipient_id}' añadido al vault.")
+            print(f"  {C_GREEN}[OK]{C_END} Destinatario '{recipient_id}' añadido al vault.")
 
         # --- 4. Actualizar metadatos y guardar ---
         # Actualizar la lista de destinatarios en el header para la verificación AAD
@@ -103,22 +109,22 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         vault_container['authentication_tag'] = new_ciphertext_with_tag[-16:]
         
         Container.save(vault_container, vault_path)
-        print(f"\n[ÉXITO] Vault '{os.path.basename(vault_path)}' actualizado con los nuevos destinatarios.")
+        print(f"\n{C_GREEN}[ÉXITO] Vault '{os.path.basename(vault_path)}' actualizado con los nuevos destinatarios.{C_END}")
 
     except Exception as e:
-        print(f"[ERROR] Falló el proceso de añadir destinatarios: {e}")
+        print(f"{C_RED}[ERROR] Falló el proceso de añadir destinatarios: {e}{C_END}")
 
 
 if __name__ == "__main__":
     # Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
-        print("No se encontraron archivos .vault en la carpeta 'encrypted_vault'.")
+        print(f"{C_YELLOW}No se encontraron archivos .vault en la carpeta 'encrypted_vault'.{C_END}")
     else:
-        print("--- Compartir un Vault Existente ---")
+        print(f"{C_MAGENTA}--- Compartir un Vault Existente ---{C_END}")
         print("Vaults disponibles:")
         for i, v_name in enumerate(available_vaults):
-            print(f"  [{i+1}] {v_name}")
+            print(f"  [{i+1}] {C_BLUE}{v_name}{C_END}")
         
         try:
             choice = int(input("Elige el número del vault a compartir: ")) - 1
@@ -126,21 +132,21 @@ if __name__ == "__main__":
                 raise ValueError()
             vault_to_share = os.path.join("encrypted_vault", available_vaults[choice])
         except (ValueError, IndexError):
-            print("Selección no válida.")
+            print(f"{C_RED}Selección no válida.{C_END}")
             exit()
 
         # Pedir credenciales del usuario actual
-        print("\n--- Autorización Requerida ---")
+        print(f"\n{C_MAGENTA}--- Autorización Requerida ---{C_END}")
         print("Necesitas ser un destinatario existente para poder compartir.")
         current_user_id = input("Introduce tu ID de usuario: ")
         current_user_pk_path = input(f"Introduce la ruta a tu clave privada ('{current_user_id}'): ")
 
         if not os.path.exists(current_user_pk_path):
-            print(f"[ERROR] La clave privada en '{current_user_pk_path}' no existe.")
+            print(f"{C_RED}[ERROR] La clave privada en '{current_user_pk_path}' no existe.{C_END}")
         else:
             # Recopilar nuevos destinatarios
             new_recipients = []
-            print("\n--- Añadir Nuevos Destinatarios ---")
+            print(f"\n{C_MAGENTA}--- Añadir Nuevos Destinatarios ---{C_END}")
             while True:
                 user_id = input("Introduce el ID del nuevo destinatario (o presiona Enter para terminar): ")
                 if not user_id:
@@ -149,18 +155,18 @@ if __name__ == "__main__":
                 pub_key_path = input(f"Introduce la ruta a la clave pública de '{user_id}': ")
                 
                 if not os.path.exists(pub_key_path):
-                    print(f"[ERROR] La clave pública en '{pub_key_path}' no existe.")
+                    print(f"{C_RED}[ERROR] La clave pública en '{pub_key_path}' no existe.{C_END}")
                     continue
                 
                 try:
                     public_key = KeyManager.load_ecc_key(pub_key_path, is_public=True)
                     new_recipients.append({"id": user_id, "public_key": public_key})
-                    print(f"  [OK] Nuevo destinatario '{user_id}' listo para ser añadido.")
+                    print(f"  {C_GREEN}[OK]{C_END} Nuevo destinatario '{user_id}' listo para ser añadido.")
                 except Exception as e:
-                    print(f"[ERROR] No se pudo cargar la clave pública: {e}")
+                    print(f"{C_RED}[ERROR] No se pudo cargar la clave pública: {e}{C_END}")
 
-            # Ejecutar si hay nuevos destinatarios
+            # Ejecutar la lógica si hay nuevos destinatarios
             if new_recipients:
                 add_recipients_to_vault(vault_to_share, current_user_id, current_user_pk_path, new_recipients)
             else:
-                print("\nNo se añadieron nuevos destinatarios. Proceso cancelado.")
+                print(f"\n{C_YELLOW}No se añadieron nuevos destinatarios. Proceso cancelado.{C_END}")
