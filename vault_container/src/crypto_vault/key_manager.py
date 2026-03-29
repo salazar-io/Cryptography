@@ -1,6 +1,6 @@
 # src/crypto_vault/key_manager.py
 # Clase key_manager para generar y cargar llaves
-# Version 1.0
+# Version 2.0 con soporte para ECIES
 
 import os
 import json
@@ -8,6 +8,8 @@ import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
 
 class KeyManager:
     ITERATIONS = 600000  # Recomendado por OWASP/NIST para PBKDF2-SHA256
@@ -83,3 +85,47 @@ class KeyManager:
             return master_key
         except Exception:
             raise ValueError("Contraseña incorrecta o archivo de llave corrupto.")
+
+    @staticmethod
+    def generate_ecc_key_pair():
+        """Genera un par de claves ECC (privada y pública)."""
+        private_key = ec.generate_private_key(ec.SECP384R1())
+        public_key = private_key.public_key()
+        return private_key, public_key
+
+    @staticmethod
+    def save_ecc_key(key, path: str, password: str = None):
+        """Guarda una clave ECC en formato PEM, opcionalmente cifrada."""
+        if isinstance(key, ec.EllipticCurvePrivateKey):
+            encryption_algorithm = (
+                serialization.BestAvailableEncryption(password.encode())
+                if password
+                else serialization.NoEncryption()
+            )
+            pem = key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=encryption_algorithm,
+            )
+        elif isinstance(key, ec.EllipticCurvePublicKey):
+            pem = key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+        else:
+            raise TypeError("Tipo de clave no soportado para guardar.")
+
+        with open(path, "wb") as f:
+            f.write(pem)
+
+    @staticmethod
+    def load_ecc_key(path: str, password: str = None, is_public: bool = False):
+        """Carga una clave ECC desde un archivo PEM."""
+        with open(path, "rb") as f:
+            pem_data = f.read()
+
+        if is_public:
+            return serialization.load_pem_public_key(pem_data)
+        else:
+            password_bytes = password.encode() if password else None
+            return serialization.load_pem_private_key(pem_data, password=password_bytes)
