@@ -1,58 +1,57 @@
 # src/crypto_vault/container.py
 # Clase Container para guardar y cargar los componentes del vault 
-# Version 1.0
+# Version 2.0 con soporte para multiples usuarios
 
 import os
 import json
+import base64
 
 class Container:
     """Clase para manejar la estructura de almacenamiento del vault."""
     @staticmethod
-    def save(vault_dict: dict, base_path: str) -> None:
-        """guarda los componentes del vault en una estructura de directorios.
+    def save(vault_dict: dict, file_path: str) -> None:
+        """Guarda el diccionario del vault en un único archivo JSON.
+        Los datos binarios se codifican en base64.
         Args:
-            vault_dict (dict): Un diccionario con las claves "header", "nonce", "ciphertext" y "authentication_tag".
-            base_path (str): La ruta base donde se guardarán los componentes del vault.
+            vault_dict (dict): Diccionario del vault.
+            file_path (str): Ruta al archivo de salida.
         """
+        # Crear una copia para no modificar el diccionario original
+        serializable_vault = vault_dict.copy()
 
-        os.makedirs(base_path, exist_ok=True) #crea el directorio si no existe
-        
-        with open(os.path.join(base_path, "header"), "w") as f: 
-            json.dump(vault_dict["header"], f, indent=4) 
-            
-        with open(os.path.join(base_path, "nonce"), "wb") as f:
-            f.write(vault_dict["nonce"])
-            
-        with open(os.path.join(base_path, "ciphertext"), "wb") as f:
-            f.write(vault_dict["ciphertext"])
-            
-        with open(os.path.join(base_path, "authentication_tag"), "wb") as f:
-            f.write(vault_dict["authentication_tag"])
+        # Codificar datos binarios a base64
+        serializable_vault['nonce'] = base64.b64encode(vault_dict['nonce']).decode('utf-8')
+        serializable_vault['ciphertext'] = base64.b64encode(vault_dict['ciphertext']).decode('utf-8')
+        serializable_vault['authentication_tag'] = base64.b64encode(vault_dict['authentication_tag']).decode('utf-8')
+
+        if 'recipients' in serializable_vault:
+            for recipient in serializable_vault['recipients']:
+                recipient['encrypted_key'] = base64.b64encode(recipient['encrypted_key']).decode('utf-8')
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(serializable_vault, f, indent=4)
 
     @staticmethod
-    def load(base_path: str) -> dict:
-        """Carga los componentes del vault desde una estructura de directorios.
+    def load(file_path: str) -> dict:
+        """Carga el diccionario del vault desde un archivo JSON.
+        Los datos en base64 se decodifican a binario.
         Args:
-            base_path (str): La ruta base donde se encuentran los componentes del vault.
+            file_path (str): Ruta al archivo del vault.
         Returns:
-            dict: Un diccionario con las claves "header", "nonce", "ciphertext" y "authentication_tag".
-
+            dict: Diccionario del vault.
         """
-        with open(os.path.join(base_path, "header"), "r") as f:
-            header = json.load(f)
-            
-        with open(os.path.join(base_path, "nonce"), "rb") as f:
-            nonce = f.read()
-            
-        with open(os.path.join(base_path, "ciphertext"), "rb") as f:
-            ciphertext = f.read()
-            
-        with open(os.path.join(base_path, "authentication_tag"), "rb") as f:
-            tag = f.read()
-            
-        return {
-            "header": header,
-            "nonce": nonce,
-            "ciphertext": ciphertext,
-            "authentication_tag": tag
-        }
+        with open(file_path, "r") as f:
+            serializable_vault = json.load(f)
+
+        # Decodificar datos base64 a binario
+        vault_dict = serializable_vault.copy()
+        vault_dict['nonce'] = base64.b64decode(serializable_vault['nonce'])
+        vault_dict['ciphertext'] = base64.b64decode(serializable_vault['ciphertext'])
+        vault_dict['authentication_tag'] = base64.b64decode(serializable_vault['authentication_tag'])
+
+        if 'recipients' in vault_dict:
+            for recipient in vault_dict['recipients']:
+                recipient['encrypted_key'] = base64.b64decode(recipient['encrypted_key'])
+                
+        return vault_dict
