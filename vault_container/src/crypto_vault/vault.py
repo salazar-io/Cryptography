@@ -7,7 +7,7 @@ import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from datetime import datetime
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -18,8 +18,8 @@ class Vault:
         # 1. Generar clave efímera
         ephemeral_private_key = ec.generate_private_key(public_key.curve)
         ephemeral_public_key_bytes = ephemeral_private_key.public_key().public_bytes(
-            encoding=os.getenv("CRYPTO_SERIALIZATION_ENCODING", "utf-8"),
-            format=os.getenv("CRYPTO_PUBLIC_KEY_FORMAT", "utf-8")
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.CompressedPoint
         )
 
         # 2. Derivar secreto compartido
@@ -49,18 +49,23 @@ class Vault:
     @staticmethod
     def _decrypt_ecies(private_key: ec.EllipticCurvePrivateKey, encrypted_data: bytes) -> bytes:
         """Descifra datos usando un esquema ECIES simplificado."""
-        # Extraer componentes
-        pub_key_len = (private_key.curve.key_size + 7) // 8 * 2 + 1
+        # 1. Calcular longitud de la clave pública comprimida y extraer componentes
+        # Para SECP384R1, la clave comprimida es 1 (prefijo) + 48 bytes (coord x) = 49 bytes
+        pub_key_len = (private_key.curve.key_size + 7) // 8 + 1
         ephemeral_public_key_bytes = encrypted_data[:pub_key_len]
-        iv = encrypted_data[pub_key_len:pub_key_len + 12]
-        tag = encrypted_data[pub_key_len + 12:pub_key_len + 28]
-        ciphertext = encrypted_data[pub_key_len + 28:]
+        iv = encrypted_data[pub_key_len : pub_key_len + 12]
+        tag = encrypted_data[pub_key_len + 12 : pub_key_len + 28]
+        ciphertext = encrypted_data[pub_key_len + 28 :]
 
-        ephemeral_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
-            private_key.curve, ephemeral_public_key_bytes
-        )
+        # 2. Reconstruir la clave pública efímera desde los bytes
+        try:
+            ephemeral_public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+                private_key.curve, ephemeral_public_key_bytes
+            )
+        except Exception as e:
+            raise ValueError(f"Invalid public bytes for the given curve: {e}")
 
-        # Derivar secreto y claves (igual que en cifrado)
+        # 3. Derivar secreto y claves (igual que en cifrado)
         shared_secret = private_key.exchange(ec.ECDH(), ephemeral_public_key)
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
@@ -70,16 +75,15 @@ class Vault:
         )
         derived_key = hkdf.derive(shared_secret)
         encryption_key = derived_key[:32]
-        mac_key = derived_key[32:]
-
-        # Descifrar
+        
+        # 4. Descifrar
         cipher = Cipher(algorithms.AES(encryption_key), modes.GCM(iv, tag))
         decryptor = cipher.decryptor()
         
         try:
             return decryptor.update(ciphertext) + decryptor.finalize()
         except Exception as e:
-            raise ValueError(f"Error de descifrado ECIES: {e}")
+            raise ValueError(f"Error de descifrado ECIES (posiblemente tag inválido): {e}")
 
     @staticmethod
     def encrypt(data: bytes, recipients: list, metadata: dict = None) -> dict:
