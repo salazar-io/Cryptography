@@ -4,7 +4,6 @@
 - Salazar Serrano Edgar
 - Mendoza González Mario
 - Victoria Correa Laysha Daniela
-- Rojas Jiménez Claudia Alin
 
 ## 1. Descripción General del Sistema
 
@@ -140,9 +139,6 @@ Nuestro sistema asume que:
 ## 6. Análisis de la superficie de ataque. 
 Este análisis es un paso crítico para identificar todas las interfaces donde un adversario podría intentar subvertir los controles criptográgicos del sistema. En una herramienta de CLI como nuestra Secure Digital Document Vault, la seguridad no depende solo de la robustez de los algoritmos (como AES o EdDSA), sino de cómo el software maneja la entrada de datos externos y la interacción con el sistema operativo. 
 
-A continuación, se catalogan los puntos de entrada, los riesgos asociados y las propiedades de seguridad que se verían comprometidas en caso de un fallo en la implementación. 
-
-
 | Punto de Entrada | ¿Qué podría salir mal? | Propiedad en Riesgo |
 | :--- | :--- | :--- |
 | **Entrada de archivos** | Procesamiento de archivos malformados o excesivamente grandes para causar un DoS. | **Disponibilidad** |
@@ -152,8 +148,6 @@ A continuación, se catalogan los puntos de entrada, los riesgos asociados y las
 | **Flujo de compartición** | Inclusión accidental de llaves públicas no autorizadas, dando acceso a terceros. | **Confidencialidad** |
 | **Verificación de firmas** | Procesar o descifrar datos antes de validar que la firma digital sea legítima. | **Autenticidad / Integridad** |
 | **Argumentos de CLI** | Datos sensibles quedando registrados en el historial de comandos del sistema operativo. | **Confidencialidad** |
-
-
 
 ---
 
@@ -169,10 +163,124 @@ Para asegurar un diseño intencional, cada requerimiento se traduce en una decis
 | **Confidencialidad en almacenamiento** | Implementación de **Cifrado Híbrido** para manejar múltiples destinatarios. |
 | **Prevención de reutilización de llaves** | Uso obligatorio de un **CSPRNG** para generar llaves y nonces únicos por archivo. |
 
-
-
----
-
 ### Conclusión de Diseño
 Al mapear estas restricciones, el sistema se vuelve resistente no solo a ataques externos, sino también a errores comunes de implementación. La arquitectura garantiza que, incluso si el almacenamiento es comprometido, la información permanezca cifrada y auténtica.
 
+---
+
+## 8. Arquitectura de Cifrado Híbrido (ECIES + AES-GCM)
+
+Para cumplir con la necesidad de compartir archivos de forma segura con múltiples destinatarios, el sistema fue ampliado implementando un esquema de cifrado híbrido usando la librería `cryptography` de Python.
+
+### 8.1 Explicación del Diseño Híbrido
+* **¿Por qué se utiliza el cifrado híbrido?**
+    Combina la eficiencia computacional del cifrado simétrico con la seguridad y conveniencia de distribución de claves del cifrado asimétrico. Permite cifrar un documento pesado una sola vez y autorizar a varios usuarios sin duplicar el archivo original para cada uno.
+* **¿Por qué sigue siendo necesario el cifrado simétrico?**
+    El cifrado de clave pública (asimétrico) es costoso a nivel de procesamiento y no está diseñado matemáticamente para cifrar grandes volúmenes de datos. **AES-256-GCM** cifra el contenido real del archivo porque es rápido, maneja bloques grandes y provee validación de integridad.
+* **¿Por qué es necesario el cifrado de claves por destinatario?**
+    Para eliminar la necesidad de compartir una "contraseña maestra". Se genera una clave simétrica única aleatoria para el archivo, y esta pequeña clave se cifra individualmente con la clave pública de cada destinatario (ECIES). Así, cada usuario utiliza su propia clave privada para recuperar el acceso.
+
+### 8.2 Decisiones de Seguridad
+* **¿Cómo identifican los destinatarios su llave?**
+    El sistema utiliza **identificadores de usuario explícitos**. El archivo `.vault` guarda un arreglo donde cada entrada empareja un `id` en texto plano (ej. "alice") con la clave cifrada específicamente para ese usuario.
+* **¿Qué ocurre si el atacante modifica la lista de destinatarios?**
+    El descifrado falla al instante. La lista completa de identificadores (junto a los metadatos) se inyecta en el **AAD (Additional Authenticated Data)** de AES-GCM. Si un atacante altera o elimina un destinatario, la validación de la etiqueta de autenticación (Tag) fracasa y el programa bloquea el acceso.
+* **¿Qué ocurre si la clave pública es incorrecta (o se usa una privada equivocada)?**
+    El descifrado falla durante la capa ECIES. En el intercambio de claves (ECDH), el secreto derivado será matemáticamente incorrecto, la función de derivación (HKDF) generará una clave AES equivocada, y el MAC interno rechazará la operación antes de siquiera intentar procesar el archivo principal.
+
+---
+
+## 9. Estructura del Código Criptográfico
+
+La estructura del proyecto separa claramente los scripts del usuario de la lógica criptográfica (`src/`).
+
+```text
+vault_container/
+├── encrypted_vault/      # Almacena los archivos .vault cifrados
+├── decrypted_files/      # Guarda los archivos descifrados
+├── plaintext/            # Contiene los archivos originales a cifrar
+├── user_keys/            # Almacena las claves públicas y privadas de los usuarios
+│
+├── encrypt_file.py       # Cifra un archivo para uno o más destinatarios.
+├── decrypt_file.py       # Descifra un vault si eres un destinatario.
+├── share_vault.py        # Añade nuevos destinatarios a un vault existente.
+├── generate_user_keys.py # Crea pares de claves ECC para los usuarios.
+├── test_security.py      # Ejecuta las pruebas unitarias automatizadas.
+│
+└── src/crypto_vault/
+    ├── vault.py          # Lógica principal de cifrado/descifrado híbrido.
+    ├── key_manager.py    # Gestión y derivación de claves.
+    └── container.py      # Empaquetado en JSON y Base64.
+```
+
+### Diagrama del Flujo de Cifrado Híbrido (ASCII Art)
+
+```
+                +-----------------+      +----------------------+      +----------------------+
+Archivo ---->   | Cifrado AES-GCM | ---> |   Contenido Cifrado  |      |   Contenido Cifrado  |
+Original        +-----------------+      +----------------------+      |                      |
+                      ^                                                |                      |
+                      |                                                |   +----------------+ |
+                +-----+------+           +-------------------------+   |   |   Tag (GMAC)   | |
+                | Clave de   | --------> | Cifrado ECIES (por c/u) | --+-> | +----------------+ |
+                | Archivo    |           +-------------------------+   |   | Lista de         | |
+                | (Simétrica)|                 ^         ^         ^   |   | Destinatarios:   | |
+                +------------+                 |         |         |   |   | +--------------+ | |
+                                               |         |         |   |   | | Alice: Key_A | | |
+                       +-----------------------+         |         |   |   | +--------------+ | |
+                       |                                 |         |   |   | | Bob:   Key_B | | |
+            +----------+----------+           +----------+-------+ |   |   | +--------------+ | |
+            | Clave Pública Alice |           | Clave Pública Bob| ... |   | | ...          | | |
+            +---------------------+           +--------------------+   |   +----------------+ |
+                                                                       +----------------------+
+                                                                            Archivo .vault
+```
+
+---
+
+## 10. Manual de Uso (Flujo CLI)
+
+Todo el flujo operativo se maneja a través de la terminal mediante los scripts de la raíz del proyecto.
+
+**Paso 1: Generar Claves para los Usuarios**
+```bash
+python generate_user_keys.py
+```
+*(Solicitará un ID de usuario y una contraseña local para proteger la clave privada generada).*
+
+**Paso 2: Cifrar un Archivo (Crear Vault)**
+```bash
+python encrypt_file.py
+```
+*(Solicitará la ruta del archivo plano y entrará en un bucle para agregar el ID y la ruta de la clave pública de cada destinatario autorizado).*
+
+**Paso 3: Añadir un Nuevo Usuario a un Vault Existente**
+```bash
+python share_vault.py
+```
+*(Para poder compartir un documento, el usuario actual debe autenticarse ingresando su propia ID, llave privada y contraseña para desenvolver temporalmente la clave de archivo. Luego podrá añadir el ID y la llave pública del nuevo destinatario. El sistema re-cifrará el AAD automáticamente).*
+
+**Paso 4: Descifrar un Documento**
+```bash
+python decrypt_file.py
+```
+*(Solicitará elegir el archivo `.vault` a descifrar, el ID del usuario, y su llave privada. Si las validaciones de AAD y ECIES son correctas, el archivo original aparecerá en la carpeta `decrypted_files/`).*
+
+---
+
+## 11. Pruebas Unitarias de Seguridad 🧪
+
+Para asegurar el cumplimiento empírico de las políticas de acceso y la resistencia contra modificaciones, el proyecto incluye la suite de validación `test_security.py` construida sobre la librería `unittest`. 
+
+Esta suite ejecuta pruebas en memoria sin afectar los archivos locales, validando las siguientes afirmaciones establecidas en los requisitos:
+
+1. **Múltiples Destinatarios:** Si el archivo se comparte con dos o más usuarios, el sistema permite que ambos lo descifren de forma independiente usando sus respectivas claves privadas.
+2. **Rechazo a No Autorizados:** Un usuario que no está en la lista de destinatarios es inmediatamente bloqueado e incapaz de descifrar el contenido.
+3. **Protección de AAD contra Manipulación:** Si un atacante altera la estructura JSON o añade un usuario a la lista de destinatarios en el archivo `.vault`, el Tag GCM no coincidirá y el descifrado fallará.
+4. **Validación de Claves Correctas:** Si se introduce una clave privada incorrecta (incluso utilizando un ID válido), el proceso de derivación ECDH falla de manera segura y deniega el acceso.
+5. **Revocación Efectiva:** Eliminar la entrada de un destinatario del archivo rompe su acceso permanentemente, logrando una correcta denegación de servicios a nivel de usuario.
+
+**Comando para ejecutar las pruebas:**
+```bash
+python test_security.py
+```
