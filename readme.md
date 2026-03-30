@@ -187,6 +187,9 @@ Para cumplir con la necesidad de compartir archivos de forma segura con múltipl
     El descifrado falla al instante. La lista completa de identificadores (junto a los metadatos) se inyecta en el **AAD (Additional Authenticated Data)** de AES-GCM. Si un atacante altera o elimina un destinatario, la validación de la etiqueta de autenticación (Tag) fracasa y el programa bloquea el acceso.
 * **¿Qué ocurre si la clave pública es incorrecta (o se usa una privada equivocada)?**
     El descifrado falla durante la capa ECIES. En el intercambio de claves (ECDH), el secreto derivado será matemáticamente incorrecto, la función de derivación (HKDF) generará una clave AES equivocada, y el MAC interno rechazará la operación antes de siquiera intentar procesar el archivo principal.
+* **¿Qué ocurre si la clave pública es incorrecta (o se usa una privada equivocada)?**
+    El descifrado falla durante la capa ECIES. En el intercambio de claves (ECDH), el secreto derivado será matemáticamente incorrecto, la función de derivación (HKDF) generará una clave AES equivocada, y el MAC interno rechazará la operación antes de siquiera intentar procesar el archivo principal.
+
 
 ---
 
