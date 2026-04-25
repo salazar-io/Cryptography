@@ -6,8 +6,9 @@ import os
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from datetime import datetime
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -86,8 +87,9 @@ class Vault:
             raise ValueError(f"Error de descifrado ECIES (posiblemente tag inválido): {e}")
 
     @staticmethod
-    def encrypt(data: bytes, recipients: list, metadata: dict = None) -> dict:
-        """Cifrado híbrido para múltiples destinatarios."""
+    def encrypt(data: bytes, recipients: list, metadata: dict = None,
+                signer_private_key: ed25519.Ed25519PrivateKey = None, signer_id: str = None) -> dict:
+        """Cifrado híbrido para múltiples destinatarios con firma digital."""
         file_key = AESGCM.generate_key(bit_length=256)
         aesgcm = AESGCM(file_key)
         nonce = os.urandom(12)
@@ -117,7 +119,7 @@ class Vault:
         ciphertext = ciphertext_with_tag[:-16]
         tag = ciphertext_with_tag[-16:]
 
-        return {
+        result = {
             "header": metadata,
             "recipients": recipient_list,
             "nonce": nonce,
@@ -125,10 +127,40 @@ class Vault:
             "authentication_tag": tag
         }
 
+        if signer_private_key and signer_id:
+            # Hash -> Sign sobre AAD + Ciphertext + Tag
+            data_to_sign = aad + ciphertext + tag
+            # Nota: Ed25519 procesa el hash internamente
+            signature = signer_private_key.sign(data_to_sign)
+            result["signature"] = signature
+            result["signer_id"] = signer_id
+
+        return result
+
     @staticmethod
-    def decrypt(vault_container: dict, recipient_id: str, private_key: ec.EllipticCurvePrivateKey) -> bytes:
-        """Descifrado híbrido para un destinatario."""
-        # Encontrar la clave cifrada para el destinatario
+    def decrypt(vault_container: dict, recipient_id: str, private_key: ec.EllipticCurvePrivateKey,
+                signer_public_key: ed25519.Ed25519PublicKey = None) -> bytes:
+        """Descifrado híbrido para un destinatario con verificación de firma."""
+        
+        # 0. Verificación de Firma (Autenticación e Integridad) ANTES de descifrar
+        if 'signature' in vault_container and 'signer_id' in vault_container:
+            if not signer_public_key:
+                raise ValueError(f"El vault está firmado por '{vault_container['signer_id']}' pero no se proporcionó la clave pública para verificar.")
+            
+            header = vault_container["header"]
+            ciphertext = vault_container["ciphertext"]
+            tag = vault_container["authentication_tag"]
+            aad = json.dumps(header, sort_keys=True).encode('utf-8')
+            data_to_verify = aad + ciphertext + tag
+            
+            try:
+                signer_public_key.verify(vault_container['signature'], data_to_verify)
+            except InvalidSignature:
+                raise ValueError("Firma digital inválida: El archivo o los metadatos han sido modificados o falsificados.")
+        elif signer_public_key:
+             raise ValueError("Se proporcionó una clave pública de firma pero el contenedor no está firmado.")
+
+        # 1. Encontrar la clave cifrada para el destinatario
         encrypted_file_key = None
         for recipient in vault_container['recipients']:
             if recipient['id'] == recipient_id:
