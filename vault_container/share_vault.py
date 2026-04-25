@@ -23,8 +23,8 @@ def list_vaults(directory="encrypted_vault"):
         return []
     return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
-def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existing_private_key_path: str, new_recipients_info: list):
-    """Añade nuevos destinatarios a un vault existente."""
+def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existing_private_key_path: str, new_recipients_info: list, signer_private_key):
+    """Añade nuevos destinatarios a un vault existente y lo refirma."""
     # --- 1. Cargar credenciales del usuario existente ---
     password = None
     try:
@@ -35,7 +35,7 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         pass
 
     try:
-        existing_private_key = KeyManager.load_ecc_key(existing_private_key_path, password=password)
+        existing_private_key = KeyManager.load_asymmetric_key(existing_private_key_path, password=password)
     except Exception as e:
         print(f"{C_RED}[ERROR] No se pudo cargar tu clave privada: {e}{C_END}")
         return
@@ -108,6 +108,13 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         vault_container['ciphertext'] = new_ciphertext_with_tag[:-16]
         vault_container['authentication_tag'] = new_ciphertext_with_tag[-16:]
         
+        # --- 5. Re-firmar el vault ---
+        if signer_private_key:
+            data_to_sign = new_aad + vault_container['ciphertext'] + vault_container['authentication_tag']
+            vault_container['signature'] = signer_private_key.sign(data_to_sign)
+            vault_container['signer_id'] = existing_recipient_id
+            print(f"  {C_GREEN}[OK]{C_END} Vault re-firmado por '{existing_recipient_id}'.")
+        
         Container.save(vault_container, vault_path)
         print(f"\n{C_GREEN}[ÉXITO] Vault '{os.path.basename(vault_path)}' actualizado con los nuevos destinatarios.{C_END}")
 
@@ -115,7 +122,7 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         print(f"{C_RED}[ERROR] Falló el proceso de añadir destinatarios: {e}{C_END}")
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     # Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
@@ -144,6 +151,17 @@ if __name__ == "__main__":
         if not os.path.exists(current_user_pk_path):
             print(f"{C_RED}[ERROR] La clave privada en '{current_user_pk_path}' no existe.{C_END}")
         else:
+            print(f"\n{C_MAGENTA}--- Autenticación de Origen (Firma) ---{C_END}")
+            print("Al modificar el vault, debes refirmarlo con tu propia clave.")
+            signer_key_path = input(f"Introduce la ruta a tu clave privada de firma ('{current_user_id}'): ")
+            signer_password = getpass.getpass(f"Introduce la contraseña para tu clave de firma: ")
+            
+            try:
+                signer_private_key = KeyManager.load_asymmetric_key(signer_key_path, password=signer_password)
+            except Exception as e:
+                print(f"{C_RED}[ERROR] No se pudo cargar la clave de firma: {e}{C_END}")
+                exit(1)
+
             # Recopilar nuevos destinatarios
             new_recipients = []
             print(f"\n{C_MAGENTA}--- Añadir Nuevos Destinatarios ---{C_END}")
@@ -159,7 +177,7 @@ if __name__ == "__main__":
                     continue
                 
                 try:
-                    public_key = KeyManager.load_ecc_key(pub_key_path, is_public=True)
+                    public_key = KeyManager.load_asymmetric_key(pub_key_path, is_public=True)
                     new_recipients.append({"id": user_id, "public_key": public_key})
                     print(f"  {C_GREEN}[OK]{C_END} Nuevo destinatario '{user_id}' listo para ser añadido.")
                 except Exception as e:
@@ -167,6 +185,6 @@ if __name__ == "__main__":
 
             # Ejecutar la lógica si hay nuevos destinatarios
             if new_recipients:
-                add_recipients_to_vault(vault_to_share, current_user_id, current_user_pk_path, new_recipients)
+                add_recipients_to_vault(vault_to_share, current_user_id, current_user_pk_path, new_recipients, signer_private_key)
             else:
                 print(f"\n{C_YELLOW}No se añadieron nuevos destinatarios. Proceso cancelado.{C_END}")

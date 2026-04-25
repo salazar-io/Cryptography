@@ -24,6 +24,9 @@ class Container:
         serializable_vault['ciphertext'] = base64.b64encode(vault_dict['ciphertext']).decode('utf-8')
         serializable_vault['authentication_tag'] = base64.b64encode(vault_dict['authentication_tag']).decode('utf-8')
 
+        if 'signature' in vault_dict:
+            serializable_vault['signature'] = base64.b64encode(vault_dict['signature']).decode('utf-8')
+
         if 'recipients' in serializable_vault:
             for recipient in serializable_vault['recipients']:
                 recipient['encrypted_key'] = base64.b64encode(recipient['encrypted_key']).decode('utf-8')
@@ -49,6 +52,9 @@ class Container:
         vault_dict['nonce'] = base64.b64decode(serializable_vault['nonce'])
         vault_dict['ciphertext'] = base64.b64decode(serializable_vault['ciphertext'])
         vault_dict['authentication_tag'] = base64.b64decode(serializable_vault['authentication_tag'])
+
+        if 'signature' in serializable_vault:
+            vault_dict['signature'] = base64.b64decode(serializable_vault['signature'])
 
         if 'recipients' in vault_dict:
             for recipient in vault_dict['recipients']:
