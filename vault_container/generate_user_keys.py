@@ -34,10 +34,13 @@ def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
         print(f"{C_RED}[ERROR] No se pudo leer la contraseña: {e}{C_END}")
         return
 
-    # 2. Generar el par de claves
+    # 2. Generar pares de claves
     try:
+        # Claves para Cifrado (ECDH)
         private_key, public_key = KeyManager.generate_ecc_key_pair()
-        print(f"  {C_GREEN}[OK]{C_END} Par de claves ECC generado.")
+        # Claves para Firma (Ed25519)
+        sign_private_key, sign_public_key = KeyManager.generate_ed25519_key_pair()
+        print(f"  {C_GREEN}[OK]{C_END} Pares de claves ECC y Ed25519 generados.")
     except Exception as e:
         print(f"{C_RED}[ERROR] Falló la generación de claves: {e}{C_END}")
         return
@@ -48,21 +51,28 @@ def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
 
     # 4. Guardar las claves
     try:
+        # Claves de cifrado
         private_key_path = os.path.join(user_key_dir, "private_key.pem")
         public_key_path = os.path.join(user_key_dir, "public_key.pem")
+        KeyManager.save_asymmetric_key(private_key, private_key_path, password=password)
+        print(f"  {C_GREEN}[OK]{C_END} Clave privada de cifrado en: {C_BLUE}{private_key_path}{C_END}")
+        KeyManager.save_asymmetric_key(public_key, public_key_path)
+        print(f"  {C_GREEN}[OK]{C_END} Clave pública de cifrado en: {C_BLUE}{public_key_path}{C_END}")
 
-        KeyManager.save_ecc_key(private_key, private_key_path, password=password)
-        print(f"  {C_GREEN}[OK]{C_END} Clave privada guardada en: {C_BLUE}{private_key_path}{C_END}")
-
-        KeyManager.save_ecc_key(public_key, public_key_path)
-        print(f"  {C_GREEN}[OK]{C_END} Clave pública guardada en: {C_BLUE}{public_key_path}{C_END}")
+        # Claves de firma
+        sign_private_key_path = os.path.join(user_key_dir, "sign_private_key.pem")
+        sign_public_key_path = os.path.join(user_key_dir, "sign_public_key.pem")
+        KeyManager.save_asymmetric_key(sign_private_key, sign_private_key_path, password=password)
+        print(f"  {C_GREEN}[OK]{C_END} Clave privada de firma en: {C_BLUE}{sign_private_key_path}{C_END}")
+        KeyManager.save_asymmetric_key(sign_public_key, sign_public_key_path)
+        print(f"  {C_GREEN}[OK]{C_END} Clave pública de firma en: {C_BLUE}{sign_public_key_path}{C_END}")
         
         print(f"\n{C_GREEN}[ÉXITO] Claves para '{user_id}' generadas correctamente.{C_END}")
 
     except Exception as e:
         print(f"{C_RED}[ERROR] No se pudieron guardar las claves: {e}{C_END}")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     user = input("Introduce el ID del usuario (ej: alice, bob): ")
     if user:
         generate_keys_for_user(user)
