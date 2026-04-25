@@ -8,7 +8,7 @@ import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
 from cryptography.hazmat.primitives import serialization
 
 class KeyManager:
@@ -94,9 +94,16 @@ class KeyManager:
         return private_key, public_key
 
     @staticmethod
-    def save_ecc_key(key, path: str, password: str = None):
-        """Guarda una clave ECC en formato PEM, opcionalmente cifrada."""
-        if isinstance(key, ec.EllipticCurvePrivateKey):
+    def generate_ed25519_key_pair():
+        """Genera un par de claves Ed25519 (privada y pública) para firmas."""
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+        return private_key, public_key
+
+    @staticmethod
+    def save_asymmetric_key(key, path: str, password: str = None):
+        """Guarda una clave asimétrica (ECC o Ed25519) en formato PEM, opcionalmente cifrada."""
+        if isinstance(key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey)):
             encryption_algorithm = (
                 serialization.BestAvailableEncryption(password.encode())
                 if password
@@ -107,7 +114,7 @@ class KeyManager:
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=encryption_algorithm,
             )
-        elif isinstance(key, ec.EllipticCurvePublicKey):
+        elif isinstance(key, (ec.EllipticCurvePublicKey, ed25519.Ed25519PublicKey)):
             pem = key.public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -119,8 +126,8 @@ class KeyManager:
             f.write(pem)
 
     @staticmethod
-    def load_ecc_key(path: str, password: str = None, is_public: bool = False):
-        """Carga una clave ECC desde un archivo PEM."""
+    def load_asymmetric_key(path: str, password: str = None, is_public: bool = False):
+        """Carga una clave asimétrica desde un archivo PEM."""
         with open(path, "rb") as f:
             pem_data = f.read()
 
