@@ -77,7 +77,7 @@ if _name_ == "_main_":
         # 3. Solicitar datos del firmante (Remitente)
         print(f"\n{C_MAGENTA}--- Autenticación de Origen (Firma) ---{C_END}")
         signer_id = input("Introduce tu ID de usuario (Firmante): ")
-        signer_key_path = input(f"Introduce la ruta a tu clave privada de firma (ej: user_keys/{signer_id}/sign_private_key.pem): ")
+        signer_key_path = input(f"Introduce la ruta a tu clave privada de firma: ")
         signer_password = getpass.getpass(f"Introduce la contraseña para tu clave de firma: ")
         
         try:
