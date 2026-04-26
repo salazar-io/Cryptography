@@ -72,7 +72,7 @@ def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
     except Exception as e:
         print(f"{C_RED}[ERROR] No se pudieron guardar las claves: {e}{C_END}")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     user = input("Introduce el ID del usuario (ej: alice, bob): ")
     if user:
         generate_keys_for_user(user)

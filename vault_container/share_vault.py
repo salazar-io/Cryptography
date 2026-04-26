@@ -122,7 +122,7 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         print(f"{C_RED}[ERROR] Falló el proceso de añadir destinatarios: {e}{C_END}")
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
