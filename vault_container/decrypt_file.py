@@ -18,26 +18,30 @@ def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: s
     """
     # 1. Asegurar que el vault existe
     if not os.path.isfile(vault_path):
-        print(f"{C_RED}[ERROR] El archivo de vault '{vault_path}' no existe.{C_END}")
+        # CORRECCIÓN: Fuga de información mitigada en ruta de vault
+        print(f"{C_RED}[ERROR] El archivo de vault especificado no existe o el acceso fue denegado.{C_END}")
         return
 
     print(f"{C_MAGENTA}--- Descifrando {os.path.basename(vault_path)} para '{C_BLUE}{recipient_id}{C_END}' ---{C_END}")
 
-    # 2. Solicitar contraseña de la clave privada (si es necesaria)
+    # 2 y 3. Cargar la clave privada (CORRECCIÓN: Se elimina el Fail-Open y la comparación insegura de texto)
+    private_key = None
     password = None
     try:
-        # Un pequeño truco para ver si la clave está cifrada sin cargarla
-        with open(private_key_path, "r") as f:
-            if "ENCRYPTED" in f.read():
-                password = getpass.getpass(f"Introduce la contraseña para la clave privada de '{C_BLUE}{recipient_id}{C_END}': ")
+        # Intentar cargar sin contraseña primero
+        private_key = KeyManager.load_asymmetric_key(private_key_path)
+    except TypeError:
+        # La librería indica criptográficamente que se requiere una contraseña
+        password = getpass.getpass(f"Introduce la contraseña para la clave privada de '{C_BLUE}{recipient_id}{C_END}': ")
+        try:
+            private_key = KeyManager.load_asymmetric_key(private_key_path, password=password)
+        except Exception:
+            # CORRECCIÓN: Fuga de información mitigada
+            print(f"{C_RED}[ERROR] Acceso denegado: Fallo en la autenticación de la clave.{C_END}")
+            return
     except Exception:
-        pass # La clave puede ser binaria, no importa si falla
-
-    # 3. Cargar la clave privada
-    try:
-        private_key = KeyManager.load_asymmetric_key(private_key_path, password=password)
-    except Exception as e:
-        print(f"{C_RED}[ERROR] No se pudo cargar la clave privada: {e}{C_END}")
+        # Falla segura (Fail-Closed) para cualquier otro error
+        print(f"{C_RED}[ERROR] Acceso denegado: Fallo al cargar el material criptográfico.{C_END}")
         return
 
     # 4. Cargar el contenedor y descifrar
@@ -53,27 +57,30 @@ def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: s
             pub_key_path = input(f"Introduce la ruta a la clave pública de firma de '{signer_id}' (ej: user_keys/{signer_id}/sign_public_key.pem): ")
             try:
                 signer_public_key = KeyManager.load_asymmetric_key(pub_key_path, is_public=True)
-            except Exception as e:
-                print(f"{C_RED}[ERROR] No se pudo cargar la clave de firma: {e}{C_END}")
+            except Exception:
+                # CORRECCIÓN: Fuga de información mitigada al cargar clave pública
+                print(f"{C_RED}[ERROR] Operación abortada: No se pudo verificar la clave de firma.{C_END}")
                 return
         
         # Descifrar los datos
         print("  Verificando integridad y descifrando contenido...")
         decrypted_data = Vault.decrypt(vault_container, recipient_id, private_key, signer_public_key)
         
-        # Recuperar nombre original y guardar
-        original_name = vault_container.get("header", {}).get("original_name", f"decrypted_{os.path.basename(vault_path)}")
+        # CORRECCIÓN: Prevención de Path Traversal mediante os.path.basename
+        raw_original_name = vault_container.get("header", {}).get("original_name", f"decrypted_{os.path.basename(vault_path)}")
+        safe_original_name = os.path.basename(raw_original_name)
+        
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, original_name)
+        output_path = os.path.join(output_dir, safe_original_name)
         
         with open(output_path, "wb") as f:
             f.write(decrypted_data)
             
         print(f"\n{C_GREEN}[ÉXITO] Archivo descifrado y guardado en: {C_YELLOW}{output_path}{C_END}")
         
-    except Exception as e:
-        print(f"\n{C_RED}[ERROR] Falló el proceso de descifrado: {e}{C_END}")
-        print(f"{C_YELLOW}Verifica que eres un destinatario válido y que tu clave privada es correcta.{C_END}")
+    except Exception:
+        # CORRECCIÓN: Fuga de información mitigada, se elimina la impresión de la excepción explícita 'e'
+        print(f"\n{C_RED}[ERROR] Proceso abortado: Datos del vault no válidos, corruptos o autorización denegada.{C_END}")
 
 def list_vaults(directory="encrypted_vault"):
     """Lista los archivos .vault en un directorio."""
@@ -107,7 +114,8 @@ if __name__ == "__main__":
     priv_key_path = input(f"Introduce la ruta a tu clave privada de cifrado (para '{C_BLUE}{user_id}{C_END}'): ")
 
     if not os.path.exists(priv_key_path):
-        print(f"{C_RED}[ERROR] La clave privada en '{priv_key_path}' no existe.{C_END}")
+        # CORRECCIÓN: Fuga de información (no confirmar si el archivo exacto existe a nivel de sistema)
+        print(f"{C_RED}[ERROR] Operación abortada. Credenciales no válidas.{C_END}")
     else:
         #  Ejecutar descifrado
         output_folder = "decrypted_files"
