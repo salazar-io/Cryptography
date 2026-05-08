@@ -47,7 +47,7 @@ def encrypt_file_for_recipients(file_path: str, output_dir: str, recipients: lis
         print(f"\n{C_RED}[ERROR] Falló el proceso de cifrado: {e}{C_END}")
         print("El archivo original se mantuvo intacto por seguridad.")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # 1. Solicitar archivo a cifrar
     archivo_path = input("Introduce la ruta del archivo a cifrar (ej: plaintext/poema.txt): ")
     if not os.path.exists(archivo_path):

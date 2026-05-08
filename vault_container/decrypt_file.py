@@ -81,7 +81,7 @@ def list_vaults(directory="encrypted_vault"):
         return []
     return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # 1. Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
