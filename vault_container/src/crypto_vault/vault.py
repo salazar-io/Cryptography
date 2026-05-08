@@ -128,8 +128,9 @@ class Vault:
         }
 
         if signer_private_key and signer_id:
-            # Hash -> Sign sobre AAD + Ciphertext + Tag
-            data_to_sign = aad + ciphertext + tag
+            # Hash -> Sign sobre Nonce + AAD + Ciphertext + Tag + Recipients
+            recipients_data = b"".join([r['id'].encode('utf-8') + r['encrypted_key'] for r in sorted(recipient_list, key=lambda x: x['id'])])
+            data_to_sign = nonce + aad + ciphertext + tag + recipients_data
             # Nota: Ed25519 procesa el hash internamente
             signature = signer_private_key.sign(data_to_sign)
             result["signature"] = signature
@@ -150,8 +151,11 @@ class Vault:
             header = vault_container["header"]
             ciphertext = vault_container["ciphertext"]
             tag = vault_container["authentication_tag"]
+            nonce = vault_container["nonce"]
             aad = json.dumps(header, sort_keys=True).encode('utf-8')
-            data_to_verify = aad + ciphertext + tag
+            
+            recipients_data = b"".join([r['id'].encode('utf-8') + r['encrypted_key'] for r in sorted(vault_container['recipients'], key=lambda x: x['id'])])
+            data_to_verify = nonce + aad + ciphertext + tag + recipients_data
             
             try:
                 signer_public_key.verify(vault_container['signature'], data_to_verify)
