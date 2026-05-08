@@ -143,22 +143,32 @@ class Vault:
         """Descifrado híbrido para un destinatario con verificación de firma."""
         
         # 0. Verificación de Firma (Autenticación e Integridad) ANTES de descifrar
-        if 'signature' in vault_container and 'signer_id' in vault_container:
-            if not signer_public_key:
-                raise ValueError(f"El vault está firmado por '{vault_container['signer_id']}' pero no se proporcionó la clave pública para verificar.")
-            
-            header = vault_container["header"]
-            ciphertext = vault_container["ciphertext"]
-            tag = vault_container["authentication_tag"]
-            aad = json.dumps(header, sort_keys=True).encode('utf-8')
-            data_to_verify = aad + ciphertext + tag
-            
-            try:
-                signer_public_key.verify(vault_container['signature'], data_to_verify)
-            except InvalidSignature:
-                raise ValueError("Firma digital inválida: El archivo o los metadatos han sido modificados o falsificados.")
-        elif signer_public_key:
-             raise ValueError("Se proporcionó una clave pública de firma pero el contenedor no está firmado.")
+        if 'signature' not in vault_container or 'signer_id' not in vault_container:
+            raise ValueError("El vault no contiene información de firma obligatoria.")
+
+        if not signer_public_key:
+            raise ValueError(
+                f"El vault está firmado por '{vault_container['signer_id']}' "
+                "pero no se proporcionó la clave pública para verificar."
+            )
+
+        header = vault_container["header"]
+        ciphertext = vault_container["ciphertext"]
+        tag = vault_container["authentication_tag"]
+
+        aad = json.dumps(header, sort_keys=True).encode('utf-8')
+        data_to_verify = aad + ciphertext + tag
+
+        try:
+            signer_public_key.verify(
+                vault_container['signature'],
+                data_to_verify
+            )
+        except InvalidSignature:
+            raise ValueError(
+                "Firma digital inválida: "
+                "El archivo o los metadatos han sido modificados o falsificados."
+            )
 
         # 1. Encontrar la clave cifrada para el destinatario
         encrypted_file_key = None
