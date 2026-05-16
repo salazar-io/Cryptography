@@ -12,7 +12,7 @@ C_BLUE = '\033[94m'
 C_MAGENTA = '\033[95m'
 C_END = '\033[0m'
 
-def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: str, private_key_path: str):
+def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: str, keystore_path: str):
     """
     Descifra un archivo de un vault para un destinatario específico.
     """
@@ -23,21 +23,14 @@ def decrypt_file_for_recipient(vault_path: str, output_dir: str, recipient_id: s
 
     print(f"{C_MAGENTA}--- Descifrando {os.path.basename(vault_path)} para '{C_BLUE}{recipient_id}{C_END}' ---{C_END}")
 
-    # 2. Solicitar contraseña de la clave privada (si es necesaria)
-    password = None
-    try:
-        # Un pequeño truco para ver si la clave está cifrada sin cargarla
-        with open(private_key_path, "r") as f:
-            if "ENCRYPTED" in f.read():
-                password = getpass.getpass(f"Introduce la contraseña para la clave privada de '{C_BLUE}{recipient_id}{C_END}': ")
-    except Exception:
-        pass # La clave puede ser binaria, no importa si falla
+    # 2. Solicitar contraseña del keystore
+    password = getpass.getpass(f"Introduce la contraseña para el Keystore de '{C_BLUE}{recipient_id}{C_END}': ")
 
-    # 3. Cargar la clave privada
+    # 3. Cargar la clave privada desde el Keystore
     try:
-        private_key = KeyManager.load_asymmetric_key(private_key_path, password=password)
+        private_key, _ = KeyManager.load_keystore(keystore_path, password=password)
     except Exception as e:
-        print(f"{C_RED}[ERROR] No se pudo cargar la clave privada: {e}{C_END}")
+        print(f"{C_RED}[ERROR] No se pudo cargar el Keystore: {e}{C_END}")
         return
 
     # 4. Cargar el contenedor y descifrar
@@ -81,7 +74,7 @@ def list_vaults(directory="encrypted_vault"):
         return []
     return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # 1. Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
@@ -104,12 +97,12 @@ if _name_ == "_main_":
     # 2. Solicitar información del destinatario
     print(f"\n{C_MAGENTA}--- Identificación del Destinatario ---{C_END}")
     user_id = input("Introduce tu ID de destinatario: ")
-    priv_key_path = input(f"Introduce la ruta a tu clave privada de cifrado (para '{C_BLUE}{user_id}{C_END}'): ")
+    keystore_path = input(f"Introduce la ruta a tu Keystore (ej. user_keys/{user_id}/keystore): ")
 
-    if not os.path.exists(priv_key_path):
-        print(f"{C_RED}[ERROR] La clave privada en '{priv_key_path}' no existe.{C_END}")
+    if not os.path.exists(keystore_path):
+        print(f"{C_RED}[ERROR] El Keystore en '{keystore_path}' no existe.{C_END}")
     else:
         #  Ejecutar descifrado
         output_folder = "decrypted_files"
         os.makedirs(output_folder, exist_ok=True)
-        decrypt_file_for_recipient(vault_file_path, output_folder, user_id, priv_key_path)
+        decrypt_file_for_recipient(vault_file_path, output_folder, user_id, keystore_path)
