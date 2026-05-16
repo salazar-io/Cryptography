@@ -16,7 +16,7 @@ C_END = '\033[0m'
 def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
     """
     Genera y guarda un par de claves ECC para un usuario.
-    La clave privada se guarda cifrada con una contraseña.
+    La clave privada se guarda en un keystore cifrado con Argon2id.
     """
     print(f"{C_MAGENTA}--- Generando claves para el usuario: {user_id} ---{C_END}")
     
@@ -27,9 +27,11 @@ def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
         if password != password_confirm:
             print(f"{C_RED}[ERROR] Las contraseñas no coinciden.{C_END}")
             return
+        if len(password) < 6:
+            print(f"{C_YELLOW}[ADVERTENCIA] Contraseña muy corta. Se recomienda usar contraseñas robustas.{C_END}")
         if not password:
-            print(f"{C_YELLOW}[ADVERTENCIA] Se generará una clave privada sin protección por contraseña.{C_END}")
-            password = None
+            print(f"{C_RED}[ERROR] El Keystore requiere obligatoriamente una contraseña.{C_END}")
+            return
     except Exception as e:
         print(f"{C_RED}[ERROR] No se pudo leer la contraseña: {e}{C_END}")
         return
@@ -48,33 +50,31 @@ def generate_keys_for_user(user_id: str, base_path: str = "user_keys"):
     # 3. Crear directorio para el usuario
     user_key_dir = os.path.join(base_path, user_id)
     os.makedirs(user_key_dir, exist_ok=True)
+    keystore_dir = os.path.join(user_key_dir, "keystore")
 
     # 4. Guardar las claves
     try:
-        # Claves de cifrado
-        private_key_path = os.path.join(user_key_dir, "private_key.pem")
+        # Guardar claves públicas (en texto plano PEM para ser compartidas fácilmente)
         public_key_path = os.path.join(user_key_dir, "public_key.pem")
-        KeyManager.save_asymmetric_key(private_key, private_key_path, password=password)
-        print(f"  {C_GREEN}[OK]{C_END} Clave privada de cifrado en: {C_BLUE}{private_key_path}{C_END}")
         KeyManager.save_asymmetric_key(public_key, public_key_path)
         print(f"  {C_GREEN}[OK]{C_END} Clave pública de cifrado en: {C_BLUE}{public_key_path}{C_END}")
 
-        # Claves de firma
-        sign_private_key_path = os.path.join(user_key_dir, "sign_private_key.pem")
         sign_public_key_path = os.path.join(user_key_dir, "sign_public_key.pem")
-        KeyManager.save_asymmetric_key(sign_private_key, sign_private_key_path, password=password)
-        print(f"  {C_GREEN}[OK]{C_END} Clave privada de firma en: {C_BLUE}{sign_private_key_path}{C_END}")
         KeyManager.save_asymmetric_key(sign_public_key, sign_public_key_path)
         print(f"  {C_GREEN}[OK]{C_END} Clave pública de firma en: {C_BLUE}{sign_public_key_path}{C_END}")
+        
+        # Guardar claves privadas en el Keystore
+        KeyManager.save_keystore(private_key, sign_private_key, keystore_dir, password)
+        print(f"  {C_GREEN}[OK]{C_END} Claves privadas guardadas de forma segura en Keystore: {C_BLUE}{keystore_dir}{C_END}")
         
         print(f"\n{C_GREEN}[ÉXITO] Claves para '{user_id}' generadas correctamente.{C_END}")
 
     except Exception as e:
         print(f"{C_RED}[ERROR] No se pudieron guardar las claves: {e}{C_END}")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     user = input("Introduce el ID del usuario (ej: alice, bob): ")
     if user:
         generate_keys_for_user(user)
     else:
-        print(f"{C_RED}ID de usuario no válido.{C_END}")
+        print(f"{C_RED}ID de usuario no válido.{C_END}")
