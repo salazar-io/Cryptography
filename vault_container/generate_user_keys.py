@@ -77,4 +77,4 @@ if __name__ == "__main__":
     if user:
         generate_keys_for_user(user)
     else:
-        print(f"{C_RED}ID de usuario no válido.{C_END}")
+        print(f"{C_RED}ID de usuario no válido.{C_END}")
