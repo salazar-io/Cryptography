@@ -1,6 +1,3 @@
-# vault_container/share_vault.py
-# Script para añadir nuevos destinatarios a un vault existente.
-
 import os
 import getpass
 import json
@@ -23,21 +20,15 @@ def list_vaults(directory="encrypted_vault"):
         return []
     return [f for f in os.listdir(directory) if f.endswith(".vault")]
 
-def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existing_private_key_path: str, new_recipients_info: list, signer_private_key):
+def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, keystore_path: str, new_recipients_info: list):
     """Añade nuevos destinatarios a un vault existente y lo refirma."""
     # --- 1. Cargar credenciales del usuario existente ---
-    password = None
-    try:
-        with open(existing_private_key_path, "r") as f:
-            if "ENCRYPTED" in f.read():
-                password = getpass.getpass(f"Introduce la contraseña de tu clave privada ('{existing_recipient_id}'): ")
-    except Exception:
-        pass
+    password = getpass.getpass(f"Introduce la contraseña de tu Keystore ('{existing_recipient_id}'): ")
 
     try:
-        existing_private_key = KeyManager.load_asymmetric_key(existing_private_key_path, password=password)
+        existing_private_key, signer_private_key = KeyManager.load_keystore(keystore_path, password=password)
     except Exception as e:
-        print(f"{C_RED}[ERROR] No se pudo cargar tu clave privada: {e}{C_END}")
+        print(f"{C_RED}[ERROR] No se pudo cargar el Keystore: {e}{C_END}")
         return
 
     # --- 2. Cargar el vault y descifrar la clave de archivo ---
@@ -110,7 +101,11 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         
         # --- 5. Re-firmar el vault ---
         if signer_private_key:
-            data_to_sign = new_aad + vault_container['ciphertext'] + vault_container['authentication_tag']
+            # Bug fix: La firma debe incluir el nonce y recipients_data (post-auditoría D4)
+            sorted_recipients = sorted(vault_container['recipients'], key=lambda x: x['id'])
+            recipients_data = b"".join([r['id'].encode() + r['encrypted_key'] for r in sorted_recipients])
+            
+            data_to_sign = vault_container['nonce'] + new_aad + vault_container['ciphertext'] + vault_container['authentication_tag'] + recipients_data
             vault_container['signature'] = signer_private_key.sign(data_to_sign)
             vault_container['signer_id'] = existing_recipient_id
             print(f"  {C_GREEN}[OK]{C_END} Vault re-firmado por '{existing_recipient_id}'.")
@@ -122,7 +117,7 @@ def add_recipients_to_vault(vault_path: str, existing_recipient_id: str, existin
         print(f"{C_RED}[ERROR] Falló el proceso de añadir destinatarios: {e}{C_END}")
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # Listar y seleccionar vault
     available_vaults = list_vaults()
     if not available_vaults:
@@ -144,24 +139,13 @@ if _name_ == "_main_":
 
         # Pedir credenciales del usuario actual
         print(f"\n{C_MAGENTA}--- Autorización Requerida ---{C_END}")
-        print("Necesitas ser un destinatario existente para poder compartir.")
+        print("Necesitas ser un destinatario existente para poder compartir y refirmar.")
         current_user_id = input("Introduce tu ID de usuario: ")
-        current_user_pk_path = input(f"Introduce la ruta a tu clave privada ('{current_user_id}'): ")
+        keystore_path = input(f"Introduce la ruta a tu Keystore (ej. user_keys/{current_user_id}/keystore): ")
 
-        if not os.path.exists(current_user_pk_path):
-            print(f"{C_RED}[ERROR] La clave privada en '{current_user_pk_path}' no existe.{C_END}")
+        if not os.path.exists(keystore_path):
+            print(f"{C_RED}[ERROR] El Keystore en '{keystore_path}' no existe.{C_END}")
         else:
-            print(f"\n{C_MAGENTA}--- Autenticación de Origen (Firma) ---{C_END}")
-            print("Al modificar el vault, debes refirmarlo con tu propia clave.")
-            signer_key_path = input(f"Introduce la ruta a tu clave privada de firma ('{current_user_id}'): ")
-            signer_password = getpass.getpass(f"Introduce la contraseña para tu clave de firma: ")
-            
-            try:
-                signer_private_key = KeyManager.load_asymmetric_key(signer_key_path, password=signer_password)
-            except Exception as e:
-                print(f"{C_RED}[ERROR] No se pudo cargar la clave de firma: {e}{C_END}")
-                exit(1)
-
             # Recopilar nuevos destinatarios
             new_recipients = []
             print(f"\n{C_MAGENTA}--- Añadir Nuevos Destinatarios ---{C_END}")
@@ -185,6 +169,6 @@ if _name_ == "_main_":
 
             # Ejecutar la lógica si hay nuevos destinatarios
             if new_recipients:
-                add_recipients_to_vault(vault_to_share, current_user_id, current_user_pk_path, new_recipients, signer_private_key)
+                add_recipients_to_vault(vault_to_share, current_user_id, keystore_path, new_recipients)
             else:
                 print(f"\n{C_YELLOW}No se añadieron nuevos destinatarios. Proceso cancelado.{C_END}")
