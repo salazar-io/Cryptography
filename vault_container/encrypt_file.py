@@ -47,7 +47,7 @@ def encrypt_file_for_recipients(file_path: str, output_dir: str, recipients: lis
         print(f"\n{C_RED}[ERROR] Falló el proceso de cifrado: {e}{C_END}")
         print("El archivo original se mantuvo intacto por seguridad.")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # 1. Solicitar archivo a cifrar
     archivo_path = input("Introduce la ruta del archivo a cifrar (ej: plaintext/poema.txt): ")
     if not os.path.exists(archivo_path):
@@ -77,13 +77,13 @@ if _name_ == "_main_":
         # 3. Solicitar datos del firmante (Remitente)
         print(f"\n{C_MAGENTA}--- Autenticación de Origen (Firma) ---{C_END}")
         signer_id = input("Introduce tu ID de usuario (Firmante): ")
-        signer_key_path = input(f"Introduce la ruta a tu clave privada de firma: ")
-        signer_password = getpass.getpass(f"Introduce la contraseña para tu clave de firma: ")
+        signer_keystore_path = input(f"Introduce la ruta a tu Keystore: ")
+        signer_password = getpass.getpass(f"Introduce la contraseña de tu Keystore: ")
         
         try:
-            signer_private_key = KeyManager.load_asymmetric_key(signer_key_path, password=signer_password)
+            _, signer_private_key = KeyManager.load_keystore(signer_keystore_path, signer_password)
         except Exception as e:
-            print(f"{C_RED}[ERROR] No se pudo cargar la clave de firma: {e}{C_END}")
+            print(f"{C_RED}[ERROR] No se pudo cargar el Keystore: {e}{C_END}")
             exit(1)
 
         # 4. Ejecutar cifrado si hay destinatarios
