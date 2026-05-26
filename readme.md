@@ -17,274 +17,236 @@ Actualmente, los documentos digitales pueden verse comprometidos por:
 - Dificultades para compartir documentos cifrados con múltiples destinatarios.
 - Gestión insegura de claves privadas y uso de contraseñas débiles.
 
-El sistema aborda estos problemas mediante el uso correcto de primitivas criptográficas modernas, asegurando un manejo adecuado de nonces, cifrado autenticado, almacenamiento seguro de claves y verificación de integridad.
+El sistema aborda estos problemas mediante el uso correcto de primitivas criptográficas modernas, asegurando un manejo adecuado de nonces, cifrado autenticado, almacenamiento seguro de claves mediante un **Keystore con Argon2id**, firmas digitales Ed25519 y verificación de integridad estricta.
 
 ### 1.2 Funciones principales
 El sistema combina primitivas criptográficas modernas con una arquitectura práctica basada en una aplicación de línea de comandos (CLI).
 
 Sus funcionalidades principales son:
-- **Cifrado autenticado (AEAD):** garantiza confidencialidad e integridad del documento.
+- **Cifrado autenticado (AEAD):** garantiza confidencialidad e integridad del documento usando AES-256-GCM.
 - **Clave única por archivo:** cada documento se cifra con una clave simétrica distinta.
-- **Cifrado híbrido:** las claves de archivo se protegen utilizando las llaves públicas de los destinatarios.
-- **Firmas digitales:** los documentos se firman para garantizar autenticidad, la verificación ocurre antes del descifrado.
-- **Gestión de claves privadas:** las claves privadas se protegen mediante funciones de derivación de contraseñas (KDF).
-- **Compartición segura:** soporte para múltiples receptores.
-- **Respaldo y recuperación:** mecanismo básico para recuperación de claves.
+- **Cifrado híbrido:** las claves de archivo se protegen utilizando ECIES sobre las llaves públicas de los destinatarios (curva SECP384R1).
+- **Firmas digitales:** los documentos se firman con **Ed25519** bajo el paradigma **Encrypt-then-Sign** para garantizar autenticidad y atadura de contexto. La verificación ocurre de manera **fail-fast** antes de cualquier intento de descifrado.
+- **Gestión de claves privadas:** las claves privadas se protegen localmente mediante la función derivadora **Argon2id** y AES-GCM dentro de un directorio Keystore.
+- **Compartición segura:** soporte para añadir múltiples receptores actualizando y re-firmando el contenedor.
+- **Canonicalización estricta:** el AAD y la firma se calculan ordenando las llaves JSON de manera determinista y usando UTF-8.
 
-El ciclo de vida del documento dentro del sistema sigue el flujo: **Generación de clave → Cifrado → Encapsulamiento → Firma → Verificación**
+El ciclo de vida del documento dentro del sistema sigue el flujo: **Generación de claves → Cifrado (AES-GCM + ECIES) → Encapsulamiento → Firma (Ed25519) → Verificación (Fail-fast) → Descifrado**
 
 ### 1.3 ¿Qué está explícitamente fuera de alcance?
-Basado en las advertencias de seguridad y los límites definidos en el proyecto, el sistema no incluye ni permite lo siguiente:
+Basado en las advertencias de seguridad y los límites definidos en el proyecto, el sistema prohíbe:
 
-- **Gestión manual de claves:** no se permite que el usuario copie, envíe o gestione claves simétricas manualmente. La generación y manejo de claves debe ser automática dentro del sistema.
-- **Uso de algoritmos obsoletos o débiles:** no se aceptan claves inseguras menores a 128 bits.
-- **Uso de generadores pseudo-aleatorios no criptográficos:** no se pueden utilizar funciones como `Math.random()` u otros generadores no diseñados para seguridad. Es obligatorio usar un CSPRNG.
-- **Almacenamiento de claves en texto plano:** las claves privadas no pueden guardarse sin protección en el disco. Deben estar cifradas y protegidas mediante contraseña y un KDF.
-- **Reutilización de nonces:** reutilizar un nonce con la misma clave es un error grave que compromete la seguridad del sistema y está completamente prohibido.
+- **Gestión manual de claves:** no se permite que el usuario copie, envíe o gestione claves simétricas manualmente. La generación y el intercambio de claves se manejan automáticamente por la lógica del sistema.
+- **Uso de algoritmos obsoletos o débiles:** no se aceptan claves menores a 128 bits de nivel de seguridad.
+- **Uso de generadores pseudo-aleatorios no criptográficos:** es obligatorio el uso de un CSPRNG (e.g. `os.urandom`).
+- **Almacenamiento de claves en texto plano:** las claves privadas nunca pueden guardarse sin protección en el disco. Deben residir en el Keystore cifradas por el KDF.
+- **Reutilización de nonces:** reutilizar un nonce es un error catastrófico que rompe GCM, lo cual está bloqueado estructuralmente.
 
 ---
 
 ## 2. Diagrama de Arquitectura  
 ![Arquitectura](./diagram.png)
 
+*(Nota: El diagrama ilustra la arquitectura general del sistema base; para los detalles completos del esquema de cifrado y firmado, consultar la sección de Arquitectura Criptográfica).*
+
 ---
 
 ## 3. Requerimientos de Seguridad  
-- **Confidencialidad:** si un atacante obtiene acceso al contenedor de archivos, ya sea en almacenamiento local o remoto, no debe ser capaz de extaer ninguna informacion del contenido de los archivos sin tener una de las llaves privadas vinculadas al contenedor.  
-- **Integridad de los archivos:** si se realiza alguna modificación de un arhivo del contenedor, debe ser detectada por el sistema. En caso de alteración se debe cancelar el proceso para evitar que se procesen datos corruptos.  
-- **Autenticidad del remitente del archivo:** el destinatario debe tener la certeza de que el archivo fue generado por el dueño de la llave pública. Así un atacante no debe ser capaz de falsificar un archivo que aparentemente proviene de un usuario autorizado.
-- **Confidencialidad de las llaves privadas:** las llaves privadas guardadas en el Key Store no deben estar accesibles en texto plano, deben estar protegidas con un cifrado derivado de la contraseña del usuario, de modo que si un atacante se roba el archivo, no pueda realizar ataques de fuerza bruta.
-- **Protección contra manipulación (Metadatos y Cabeceras):** la protección del sistema debe ir más allá de los datos del archivo. No basta con cifrar el documento, el sistema también debe proteger la información que explica cómo descifrarlo. Así un atacante no debe ser capaz de cambiar los nombres de los destinatarios, ni intercambiar las llaves cifradas por otras, sin que el sistema lo detecte.
-- **No repudio:** una vez que un archivo ha sido firmado y compartido, el emisor no podrá negar haber creado dicho contenido, puesto que la firma digital es única y está ligada exclusivamente a su llave privada.
+- **Confidencialidad:** si un atacante obtiene acceso al contenedor de archivos, no debe ser capaz de extraer información del contenido sin poseer la llave privada autorizada.  
+- **Integridad de los archivos:** cualquier modificación a un archivo del contenedor (sea el documento cifrado, metadatos, nonce o la lista de receptores) será detectada invariablemente.  
+- **Autenticidad del remitente:** el destinatario tiene la certeza criptográfica de que el archivo fue generado por el dueño de la llave pública mediante la validación de la firma digital.
+- **Confidencialidad de las llaves privadas:** las llaves guardadas en el Keystore están protegidas contra ataques de fuerza bruta usando un cifrado derivado de la contraseña del usuario (Argon2id).
+- **Protección contra manipulación de Metadatos:** un atacante no puede alterar los identificadores de destinatarios, inyectar llaves públicas falsas, ni modificar el Nonce sin invalidar la firma y la etiqueta de autenticación (Tag) simultáneamente.
+- **No repudio:** una vez firmado y compartido el archivo, el emisor no puede negar la autoría del contenido, pues la firma Ed25519 está ligada exclusivamente a su llave privada de firmado.
 
 ---
 
 ## 4. Modelo de Amenaza
-El modelo de amenaza define qué activos deben protegerse, contra qué tipo de adversarios se diseña el sistema y cuáles son las capacidades asumidas de los atacantes.
+Este modelo define qué activos deben protegerse y bajo qué escenarios asume que operan los atacantes.
 
 ### 4.1 Activos
-Los activos son los elementos del sistema que deben protegerse para garantizar su seguridad.
-
-- **Contenido del archivo:** el documento original que el usuario cifra y comparte. Debe mantenerse confidencial y no ser accesible a personas no autorizadas.
-- **Metadatos del archivo:** información asociada al documento, como identificadores, destinatarios o información de encapsulamiento. No deben poder modificarse sin ser detectados.
-- **Claves privadas:** utilizadas para firmar documentos y descifrar claves de archivo. Son uno de los activos más críticos del sistema.
-- **Contraseñas:** protegen las claves privadas mediante un KDF. Si se comprometen, también se compromete la clave privada.
-- **Validez de la firma:** garantiza que el documento proviene del emisor legítimo y que no ha sido modificado.
+- **Contenido del archivo:** el documento sensible original.
+- **Metadatos del contenedor:** identificadores, nonce y tag GCM. Protegidos por la firma digital.
+- **Claves privadas (ECC y Ed25519):** los elementos más críticos, protegidos en disco en todo momento.
+- **Contraseñas del usuario:** la única línea de defensa de las claves en disco.
+- **Validez de la firma:** componente principal para detectar la alteración del archivo, ligada íntimamente a los datos y metadatos.
 
 ### 4.2 Adversarios
-El sistema está diseñado para defenderse contra los siguientes tipos de atacantes:
-
 #### 4.2.1 Atacante externo con acceso a contenedores almacenados
-Puede obtener acceso a archivos cifrados almacenados en disco o compartidos por otros medios.
-
-**Puede hacer:**
-- Copiar contenedores cifrados.
-- Intentar modificar archivos o metadatos.
-- Intentar ataques de fuerza bruta contra contraseñas débiles.
-
-**No puede hacer:**
-- Romper algoritmos criptográficos correctamente implementados.
-- Descifrar archivos sin la clave correspondiente.
-- Generar firmas válidas sin la clave privada legítima.
+**Puede hacer:** Copiar bóvedas, intentar alterar información en bruto o atacar cifrados.
+**No puede hacer:** Romper la curva elíptica P-384, falsificar la firma de Ed25519 o descifrar AES-GCM sin la clave ECIES y el secreto de derivación.
 
 #### 4.2.2 Destinatario malicioso
-Es un usuario legítimo que recibe un archivo pero intenta abusar del sistema.
-
-**Puede hacer:**
-- Intentar compartir el archivo con terceros.
-- Intentar analizar el contenedor cifrado.
-- Intentar modificar metadatos antes de reenviarlo.
-
-**No puede hacer:**
-- Acceder a documentos para los cuales no fue autorizado.
-- Falsificar la firma del emisor.
-- Descifrar claves destinadas a otros receptores.
+**Puede hacer:** Compartir el texto plano tras descifrarlo en su propia terminal.
+**No puede hacer:** Acceder a otras bóvedas para las que no está en la lista de receptores, falsificar la firma original del emisor, o re-cifrar el archivo alterado pasándolo por legítimo sin la llave de firma del emisor.
 
 #### 4.2.3 Atacante que modifica metadatos
-Intenta alterar información asociada al documento para cambiar destinatarios o condiciones de acceso.
-
-**Puede hacer:**
-- Modificar partes del contenedor cifrado.
-- Alterar campos visibles si no están protegidos.
-
-**No puede hacer:**
-- Alterar metadatos protegidos por AEAD sin que el sistema lo detecte.
-- Hacer que un documento modificado pase la verificación de firma.
+**Puede hacer:** Modificar los JSON en texto claro.
+**No puede hacer:** Hacer que la aplicación acepte sus modificaciones. El sistema verificará la firma digital en fase Fail-Fast y abortará la operación si algún byte de la metadata (AAD), los recipientes o el nonce han sido manipulados.
 
 #### 4.2.4 Atacante con acceso temporal al dispositivo
-Puede tener acceso físico o lógico temporal al equipo del usuario.
-
-**Puede hacer:**
-- Copiar archivos almacenados.
-- Intentar extraer claves privadas del disco.
-- Intentar ataques offline contra contraseñas.
-
-**No puede hacer:**
-- Utilizar la clave privada sin conocer la contraseña.
-- Recuperar claves protegidas por un KDF fuerte.
-- Descifrar documentos sin la clave correspondiente.
-
----
-## 5. Suposiciones de confianza  
-En criptografía, ningún sistema es seguro por sí mismo si el entorno en el que opera está corrompido. Las suposiciones de confianza definen qué condiciones externas deben cumplirse para que nuestras garantías de seguridad sean válidas.
-Nuestro sistema asume que:  
-- El o los dispositivos en donde se ejecuta la aplicación no se encuentran comprometidos por ningun malware, asi las contraseñas y llaves del usuario se encuentran seguras.
-- Se tiene un generador de números aleatorios seguro.
-- Solo el dueño de la llave publica puede abrir el archivo.
-- Se asume que el usuario se hace responsable de elegir una contraseña con suficiente entropia y de que no la compartirá.
-- El almacenamiento pueder ser comprometido dando acceso a algun atacante ya sea en el servidor local o en la nube.
-- Se usarán algoritmos criptográficos estandarizados sin errores de implementación o puertas traseras.
+**Puede hacer:** Copiar la carpeta Keystore con las llaves privadas cifradas.
+**No puede hacer:** Usar las llaves sin la contraseña de descifrado, o lanzar ataques offline masivos y baratos contra las contraseñas debido al costo asimétrico en memoria y tiempo impuesto por Argon2id.
 
 ---
 
-## 6. Análisis de la superficie de ataque. 
-Este análisis es un paso crítico para identificar todas las interfaces donde un adversario podría intentar subvertir los controles criptográgicos del sistema. En una herramienta de CLI como nuestra Secure Digital Document Vault, la seguridad no depende solo de la robustez de los algoritmos (como AES o EdDSA), sino de cómo el software maneja la entrada de datos externos y la interacción con el sistema operativo. 
+## 5. Suposiciones de Confianza  
+- Los dispositivos donde opera la CLI no están infectados con malware que intercepte el teclado o extraiga la memoria RAM.
+- Existe y se utiliza un generador de números aleatorios criptográficamente seguro proveniente del sistema operativo.
+- El usuario es responsable de usar contraseñas fuertes (entropía aceptable) y gestionar su seguridad física y lógica básica.
+- Los algoritmos estándar usados de la librería OpenSSL/`cryptography` en Python carecen de puertas traseras.
+
+---
+
+## 6. Análisis de la Superficie de Ataque
 
 | Punto de Entrada | ¿Qué podría salir mal? | Propiedad en Riesgo |
 | :--- | :--- | :--- |
-| **Entrada de archivos** | Procesamiento de archivos malformados o excesivamente grandes para causar un DoS. | **Disponibilidad** |
-| **Análisis de metadatos** | Inyección de información falsa o manipulación de cabeceras para engañar al sistema. | **Integridad / Autenticidad** |
-| **Importación/Exportación de llaves** | Almacenamiento de llaves privadas en texto plano o con cifrado débil en el disco. | **Confidencialidad** |
-| **Entrada de contraseña** | Ataques de fuerza bruta o exposición de la contraseña en el historial de la terminal. | **Confidencialidad** |
-| **Flujo de compartición** | Inclusión accidental de llaves públicas no autorizadas, dando acceso a terceros. | **Confidencialidad** |
-| **Verificación de firmas** | Procesar o descifrar datos antes de validar que la firma digital sea legítima. | **Autenticidad / Integridad** |
-| **Argumentos de CLI** | Datos sensibles quedando registrados en el historial de comandos del sistema operativo. | **Confidencialidad** |
+| **Entrada de archivos** | Procesamiento de archivos malformados para causar un DoS. | **Disponibilidad** |
+| **Análisis de metadatos** | Inyección de información falsa para engañar al sistema. | **Integridad / Autenticidad** |
+| **Keystore en Disco** | Robo del Keystore y fuerza bruta offline. | **Confidencialidad** |
+| **Entrada de contraseña** | Exposición de la contraseña al escribirse o interceptarse. | **Confidencialidad** |
+| **Flujo de compartición** | Inclusión accidental de llaves públicas no autorizadas. | **Confidencialidad** |
+| **Verificación de firmas** | Descifrar y tratar los datos *antes* de validar que son auténticos. (Mitigado por paradigma fail-fast). | **Autenticidad / Integridad** |
 
 ---
 
 ## 7. Restricciones de Diseño Derivadas de los Requisitos
 
-Para asegurar un diseño intencional, cada requerimiento se traduce en una decisión técnica obligatoria.
-
-| Requerimiento | Restricción de Diseño |
+| Requerimiento | Restricción de Diseño Aplicada |
 | :--- | :--- |
-| **Integridad garantizada** | Es obligatorio el uso de **AEAD** (como AES-GCM o ChaCha20-Poly1305). |
-| **Autenticidad requerida** | Se deben implementar **Firmas Digitales** (ej. Ed25519) para validar al emisor. |
-| **Protección de llaves privadas** | Las llaves deben cifrarse con un **KDF** robusto (ej. Argon2id) antes de ir a disco. |
-| **Confidencialidad en almacenamiento** | Implementación de **Cifrado Híbrido** para manejar múltiples destinatarios. |
-| **Prevención de reutilización de llaves** | Uso obligatorio de un **CSPRNG** para generar llaves y nonces únicos por archivo. |
-
-### Conclusión de Diseño
-Al mapear estas restricciones, el sistema se vuelve resistente no solo a ataques externos, sino también a errores comunes de implementación. La arquitectura garantiza que, incluso si el almacenamiento es comprometido, la información permanezca cifrada y auténtica.
+| **Integridad garantizada** | Obligatorio el uso del modo **AEAD (AES-256-GCM)** con AAD completo. |
+| **Autenticidad estricta** | Uso de Firmas **Ed25519** (Encrypt-then-Sign) vinculando todo el contexto: AAD, Nonce, CT y Receptores. |
+| **Protección robusta en disco** | Las llaves se almacenan en un Keystore envueltas por un **KDF de alto costo (Argon2id)**. |
+| **Múltiples destinatarios** | Sistema **Híbrido ECIES** Derivación ECDH + HKDF para proteger la llave simétrica sin compartir un secreto central. |
+| **Determinismo estructural** | Especificación de **Canonicalización** al serializar JSON y ordenar diccionarios para asegurar que las firmas y tags coincidan siempre bit a bit. |
 
 ---
 
-## 8. Arquitectura de Cifrado Híbrido (ECIES + AES-GCM)
+## 8. Arquitectura de Cifrado Híbrido y Firmas
 
-Para cumplir con la necesidad de compartir archivos de forma segura con múltiples destinatarios, el sistema fue ampliado implementando un esquema de cifrado híbrido usando la librería `cryptography` de Python.
+El sistema evolucionó de un esquema base a una bóveda robusta integrando tres esquemas matemáticos distintos:
 
-### 8.1 Explicación del Diseño Híbrido
-* **¿Por qué se utiliza el cifrado híbrido?**
-    Combina la eficiencia computacional del cifrado simétrico con la seguridad y conveniencia de distribución de claves del cifrado asimétrico. Permite cifrar un documento pesado una sola vez y autorizar a varios usuarios sin duplicar el archivo original para cada uno.
-* **¿Por qué sigue siendo necesario el cifrado simétrico?**
-    El cifrado de clave pública (asimétrico) es costoso a nivel de procesamiento y no está diseñado matemáticamente para cifrar grandes volúmenes de datos. **AES-256-GCM** cifra el contenido real del archivo porque es rápido, maneja bloques grandes y provee validación de integridad.
-* **¿Por qué es necesario el cifrado de claves por destinatario?**
-    Para eliminar la necesidad de compartir una "contraseña maestra". Se genera una clave simétrica única aleatoria para el archivo, y esta pequeña clave se cifra individualmente con la clave pública de cada destinatario (ECIES). Así, cada usuario utiliza su propia clave privada para recuperar el acceso.
+### 8.1 Explicación del Diseño
+* **¿Por qué AES-GCM y ECIES unidos?**
+  AES-256-GCM se encarga de cifrar grandes volúmenes de manera rápida con protección de integridad. ECIES asegura esta pequeña llave AES-256 para cada uno de los receptores aprobados aprovechando sus llaves públicas SECP384R1, lo cual brinda alta flexibilidad de acceso.
+* **Paradigma Encrypt-then-Sign con Ed25519**
+  Un vector de ataque en sistemas híbridos es la modificación del archivo cifrado antes de entregarlo. En este sistema se cifra el archivo primero, y a continuación, el emisor genera una firma Ed25519 sobre todos los componentes: el `nonce`, el Ciphertext `CT`, el `Tag`, el AAD, y la **lista ordenada de destinatarios**. 
+* **Fail-Fast Verification**
+  Durante el descifrado, lo **primero** que ocurre es la comprobación matemática de la firma Ed25519 utilizando la llave pública del remitente. Si falla, el archivo fue manipulado y la ejecución aborta sin arriesgarse a inyectar información corrupta en AES o HKDF.
 
-### 8.2 Decisiones de Seguridad
-* **¿Cómo identifican los destinatarios su llave?**
-    El sistema utiliza **identificadores de usuario explícitos**. El archivo `.vault` guarda un arreglo donde cada entrada empareja un `id` en texto plano (ej. "alice") con la clave cifrada específicamente para ese usuario.
-* **¿Qué ocurre si el atacante modifica la lista de destinatarios?**
-    El descifrado falla al instante. La lista completa de identificadores (junto a los metadatos) se inyecta en el **AAD (Additional Authenticated Data)** de AES-GCM. Si un atacante altera o elimina un destinatario, la validación de la etiqueta de autenticación (Tag) fracasa y el programa bloquea el acceso.
-* **¿Qué ocurre si la clave pública es incorrecta (o se usa una privada equivocada)?**
-    El descifrado falla durante la capa ECIES. En el intercambio de claves (ECDH), el secreto derivado será matemáticamente incorrecto, la función de derivación (HKDF) generará una clave AES equivocada, y el MAC interno rechazará la operación antes de siquiera intentar procesar el archivo principal.
-* **¿Qué ocurre si la clave pública es incorrecta (o se usa una privada equivocada)?**
-    El descifrado falla durante la capa ECIES. En el intercambio de claves (ECDH), el secreto derivado será matemáticamente incorrecto, la función de derivación (HKDF) generará una clave AES equivocada, y el MAC interno rechazará la operación antes de siquiera intentar procesar el archivo principal.
+### 8.2 Diagrama del Flujo de Cifrado 
 
+```text
+               +---------------+
+               | Archivo Plano |
+               +-------+-------+
+                       |
+             (Clave AES-256 Aleatoria)
+                       |
+           +-----------v-----------+          
+           |   AES-256-GCM (CT)    | -------> Ciphertext + Tag
+           +-----------+-----------+
+                       |
+               (Para c/Receptor)
+                       |
+           +-----------v-----------+          +-------------------------+
+           |     ECIES x Usuario   | -------> | Array Cifrado Receptores|
+           +-----------+-----------+          +-------------------------+
+                       |
+          (AAD + Nonce + CT + Tag + Receptores)
+                       |
+           +-----------v-----------+          +-------------------------+
+           | Firma Ed25519 (Emisor)| -------> |       Firma Digital     |
+           +-----------------------+          +-------------------------+
+
+              * Finalmente, todo se empaqueta en JSON serializado y Base64 (.vault)
+```
 
 ---
 
 ## 9. Estructura del Código Criptográfico
 
-La estructura del proyecto separa claramente los scripts del usuario de la lógica criptográfica (`src/`).
+La lógica del proyecto separa los puntos de contacto CLI (`vault_container/`) de la matemática fundamental (`src/`).
 
 ```text
-vault_container/
-├── encrypted_vault/      # Almacena los archivos .vault cifrados
-├── decrypted_files/      # Guarda los archivos descifrados
-├── plaintext/            # Contiene los archivos originales a cifrar
-├── user_keys/            # Almacena las claves públicas y privadas de los usuarios
-│
-├── encrypt_file.py       # Cifra un archivo para uno o más destinatarios.
-├── decrypt_file.py       # Descifra un vault si eres un destinatario.
-├── share_vault.py        # Añade nuevos destinatarios a un vault existente.
-├── generate_user_keys.py # Crea pares de claves ECC para los usuarios.
-├── test_security.py      # Ejecuta las pruebas unitarias automatizadas.
+Cryptography/
+├── vault_container/
+│   ├── encrypted_vault/         # Archivos .vault cifrados
+│   ├── decrypted_files/         # Archivos descifrados tras validación
+│   ├── plaintext/               # Archivos originales de prueba
+│   ├── user_keys/               # Llaves públicas y directorios Keystore de usuarios
+│   │
+│   ├── encrypt_file.py          # Cifra un archivo y lo firma
+│   ├── decrypt_file.py          # Verifica la firma y lo descifra si es válido
+│   ├── share_vault.py           # Añade a nuevos receptores y re-firma
+│   ├── generate_user_keys.py    # Crea pares ECC y Ed25519 (protegidos con Keystore)
+│   │
+│   ├── test_security.py         # Suite 1: Controles de acceso e integridad básicos
+│   ├── test_vulnerabilidades.py # Suite 2: Auditoría y validación de parches
+│   └── tests/
+│       └── test_signatures.py   # Suite 3: Casos de uso avanzados de la Firma Digital
 │
 └── src/crypto_vault/
-    ├── vault.py          # Lógica principal de cifrado/descifrado híbrido.
-    ├── key_manager.py    # Gestión y derivación de claves.
-    └── container.py      # Empaquetado en JSON y Base64.
-```
-
-### Diagrama del Flujo de Cifrado Híbrido (ASCII Art)
-
-```
-                +-----------------+      +----------------------+      +----------------------+
-Archivo ---->   | Cifrado AES-GCM | ---> |   Contenido Cifrado  |      |   Contenido Cifrado  |
-Original        +-----------------+      +----------------------+      |                      |
-                      ^                                                |                      |
-                      |                                                |   +----------------+ |
-                +-----+------+           +-------------------------+   |   |   Tag (GMAC)   | |
-                | Clave de   | --------> | Cifrado ECIES (por c/u) | --+-> | +----------------+ |
-                | Archivo    |           +-------------------------+   |   | Lista de         | |
-                | (Simétrica)|                 ^         ^         ^   |   | Destinatarios:   | |
-                +------------+                 |         |         |   |   | +--------------+ | |
-                                               |         |         |   |   | | Alice: Key_A | | |
-                       +-----------------------+         |         |   |   | +--------------+ | |
-                       |                                 |         |   |   | | Bob:   Key_B | | |
-            +----------+----------+           +----------+-------+ |   |   | +--------------+ | |
-            | Clave Pública Alice |           | Clave Pública Bob| ... |   | | ...          | | |
-            +---------------------+           +--------------------+   |   +----------------+ |
-                                                                       +----------------------+
-                                                                            Archivo .vault
+    ├── vault.py                 # Core criptográfico: AES, ECIES, Firmas y Verificación.
+    ├── key_manager.py           # Generación de llaves, KDF (Argon2id) y Keystore local.
+    └── container.py             # Funciones de serialización JSON/Base64.
 ```
 
 ---
 
-## 10. Manual de Uso (Flujo CLI)
+## 10. Manual de Uso 
 
-Todo el flujo operativo se maneja a través de la terminal mediante los scripts de la raíz del proyecto.
+El sistema opera completamente desde scripts en Python, ejecutados idealmente dentro de la carpeta `vault_container/`.
 
 **Paso 1: Generar Claves para los Usuarios**
 ```bash
 python generate_user_keys.py
 ```
-*(Solicitará un ID de usuario y una contraseña local para proteger la clave privada generada).*
+*(Solicita un ID y una contraseña. Genera un par ECC (SECP384R1) para descifrado y un par Ed25519 para firmas, creando un Keystore cifrado con Argon2id).*
 
-**Paso 2: Cifrar un Archivo (Crear Vault)**
+**Paso 2: Cifrar un Archivo: Creación del Vault**
 ```bash
 python encrypt_file.py
 ```
-*(Solicitará la ruta del archivo plano y entrará en un bucle para agregar el ID y la ruta de la clave pública de cada destinatario autorizado).*
+*(Pregunta por el archivo a cifrar y autentica al emisor usando su Keystore. Añade en bucle a cada receptor autorizado ingresando su llave pública. Finaliza generando el contenedor `.vault` firmado).*
 
 **Paso 3: Añadir un Nuevo Usuario a un Vault Existente**
 ```bash
 python share_vault.py
 ```
-*(Para poder compartir un documento, el usuario actual debe autenticarse ingresando su propia ID, llave privada y contraseña para desenvolver temporalmente la clave de archivo. Luego podrá añadir el ID y la llave pública del nuevo destinatario. El sistema re-cifrará el AAD automáticamente).*
+*(El propietario/remitente se autentica, extrae temporalmente la clave maestra en memoria, la cifra para el nuevo usuario ECIES, y reescribe el vault actualizando el AAD y re-generando la firma digital con todos los cambios).*
 
 **Paso 4: Descifrar un Documento**
 ```bash
 python decrypt_file.py
 ```
-*(Solicitará elegir el archivo `.vault` a descifrar, el ID del usuario, y su llave privada. Si las validaciones de AAD y ECIES son correctas, el archivo original aparecerá en la carpeta `decrypted_files/`).*
+*(El receptor indica el archivo `.vault` e ingresa la llave pública del remitente para validar la firma. Si el vault es íntegro y auténtico, el Keystore local desbloquea ECIES y devuelve el archivo en plano a la carpeta `decrypted_files/`).*
 
 ---
 
-## 11. Pruebas Unitarias de Seguridad 🧪
+## 11. Pruebas Unitarias y Auditoría 
 
-Para asegurar el cumplimiento empírico de las políticas de acceso y la resistencia contra modificaciones, el proyecto incluye la suite de validación `test_security.py` construida sobre la librería `unittest`. 
+El código fuente incluye 3 grupos de pruebas (UnitTests) rigurosas para certificar matemáticamente las políticas de diseño:
 
-Esta suite ejecuta pruebas en memoria sin afectar los archivos locales, validando las siguientes afirmaciones establecidas en los requisitos:
+### 11.1 Suite Básica de Controles (`test_security.py`)
+- Valida que usuarios no autorizados fracasen invariablemente en descifrar.
+- Confirma que llaves incorrectas causen una denegación determinista por ECIES.
+- Certifica que dos usuarios autorizados puedan desencapsular con completa independencia.
 
-1. **Múltiples Destinatarios:** Si el archivo se comparte con dos o más usuarios, el sistema permite que ambos lo descifren de forma independiente usando sus respectivas claves privadas.
-2. **Rechazo a No Autorizados:** Un usuario que no está en la lista de destinatarios es inmediatamente bloqueado e incapaz de descifrar el contenido.
-3. **Protección de AAD contra Manipulación:** Si un atacante altera la estructura JSON o añade un usuario a la lista de destinatarios en el archivo `.vault`, el Tag GCM no coincidirá y el descifrado fallará.
-4. **Validación de Claves Correctas:** Si se introduce una clave privada incorrecta (incluso utilizando un ID válido), el proceso de derivación ECDH falla de manera segura y deniega el acceso.
-5. **Revocación Efectiva:** Eliminar la entrada de un destinatario del archivo rompe su acceso permanentemente, logrando una correcta denegación de servicios a nivel de usuario.
+### 11.2 Suite de Firmas (`tests/test_signatures.py`)
+- Asegura que cambiar un solo byte en el Ciphertext o Tag provoque que Ed25519 rechace el contenedor.
+- Asegura que cualquier alteración al AAD revoque toda autenticación en paso fail-fast.
+- Comprueba que la validación falla contundentemente si se aporta la llave pública equivocada.
 
-**Comando para ejecutar las pruebas:**
+### 11.3 Suite de Vulnerabilidades Post-Auditoría (`test_vulnerabilidades.py`)
+Basado en hallazgos documentados de auditoría, se certificaron dos parches de arquitectura muy críticos:
+- **Resistencia a Manipulación de Receptores:** Inyectar artificialmente la llave cifrada de un tercero "debajo" del cifrado es interceptado inmediatamente, porque la llave pública y el ID del receptor están firmados.
+- **Inmutabilidad del Nonce:** Cambiar el nonce (aún si AES intentara procesarlo) es un vector cerrado porque la firma rechaza el contenedor primero.
+
+**Para ejecutar los tests manualmente:**
 ```bash
-python test_security.py
+python -m unittest test_security.py
+python -m unittest tests/test_signatures.py
+python -m unittest test_vulnerabilidades.py
 ```
