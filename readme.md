@@ -199,6 +199,15 @@ Cryptography/
 
 El sistema opera completamente desde scripts en Python, ejecutados idealmente dentro de la carpeta `vault_container/`.
 
+## Requisitos Previos
+
+Asegúrate de estar en el directorio raíz del proyecto:
+```bash
+cd /home/crypto/Cryptography/
+```
+
+Es recomendable activar tu entorno virtual si tienes uno configurado. Puedes instalar las dependencias manualmente usando `pip install -r requirements.txt` o ejecutar el script `setup_demo.py`.
+
 **Paso 1: Generar Claves para los Usuarios**
 ```bash
 python generate_user_keys.py
