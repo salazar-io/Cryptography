@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # 2. Solicitar información del destinatario
     print(f"\n{C_MAGENTA}--- Identificación del Destinatario ---{C_END}")
     user_id = input("Introduce tu ID de destinatario: ")
-    keystore_path = input(f"Introduce la ruta a tu Keystore (ej. user_keys/{user_id}/keystore): ")
+    keystore_path = input(f"Introduce la ruta a tu Keystore: ")
 
     if not os.path.exists(keystore_path):
         print(f"{C_RED}[ERROR] El Keystore en '{keystore_path}' no existe.{C_END}")
