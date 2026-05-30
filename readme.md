@@ -255,7 +255,7 @@ Basado en hallazgos documentados de auditoría, se certificaron dos parches de a
 
 **Para ejecutar los tests manualmente:**
 ```bash
-python -m unittest test_security.py
-python -m unittest tests/test_signatures.py
-python -m unittest test_vulnerabilidades.py
+python -m unittest test_signatures.py
+python -m unittest test_hybrid_encryption.py
+python -m unittest test_key_management.py
 ```
